@@ -18,11 +18,12 @@ import time
 import tkinter as tk
 import traceback
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, ttk
 
 import hopper_core as core
 from guide_tab import GuideTab
 from diag_tab import DiagnosticsTab
+from hop_dialog import HopDialog
 from hopper_core import Kind
 
 APP_TITLE = "Dimension Hopper"
@@ -478,8 +479,8 @@ class App:
         nb.pack(fill="both", expand=True, padx=12, pady=(0, 10))
         flash = tk.Frame(nb, bg=BG)
         nb.add(flash, text="  Flash  ")
-        pal = dict(BG=BG, PANEL=PANEL, PANEL_HI=PANEL_HI, EDGE=EDGE, GREEN=GREEN, LIME=LIME, TEAL=TEAL, DIM=DIM,
-                   TEXT=TEXT, WARN=WARN, BAD=BAD)
+        pal = self.pal = dict(BG=BG, PANEL=PANEL, PANEL_HI=PANEL_HI, EDGE=EDGE, GREEN=GREEN, LIME=LIME, TEAL=TEAL,
+                              DIM=DIM, TEXT=TEXT, WARN=WARN, BAD=BAD)
         nb.add(GuideTab(nb, pal, load_art), text="  Guide  ")
         self.diag_tab = DiagnosticsTab(nb, pal, self)
         nb.add(self.diag_tab, text="  Diagnostics  ")
@@ -652,9 +653,21 @@ class App:
                 text="Scan complete. Boards are parked in bootloader mode - pick payloads and beam.", fg=DIM))
         self.job("Scan", work)
 
+    # --- themed dialogs (replace tkinter.messagebox) ------------------------------------------------
+    def info(self, message: str, title: str = "Heads up"):
+        HopDialog(self.root, self.pal, self.button, "info", title, message, cancel=0).run()
+
+    def error(self, message: str, title: str = "Nope"):
+        HopDialog(self.root, self.pal, self.button, "error", title, message, cancel=0).run()
+
+    def confirm(self, title: str, message: str, details: list[str] | None = None, ok: str = "OK",
+                cancel: str = "Cancel", kind: str = "question") -> bool:
+        return HopDialog(self.root, self.pal, self.button, kind, title, message, details, (ok, cancel),
+                         default=0, cancel=1).run() == 0
+
     def port_in_use(self, port: str) -> bool:
         if port and port == self.monitor_port:
-            messagebox.showinfo(APP_TITLE, f"{port} is open in the Diagnostics tab. Disconnect it there first.")
+            self.info(f"{port} is open in the Diagnostics tab. Disconnect it there first.", "Port busy")
             return True
         return False
 
@@ -662,7 +675,7 @@ class App:
         """Reads the board's [BBSTAT] line without resetting it: battery, charging, link, firmware."""
         port = slot.port()
         if not port:
-            messagebox.showinfo(APP_TITLE, "Pick a port first (or hit Scan dimensions).")
+            self.info("Pick a port first (or hit Scan dimensions).", "Which board?")
             return
         if self.port_in_use(port):
             return
@@ -681,7 +694,7 @@ class App:
     def run_probe(self, slot: DeviceSlot):
         port = slot.port()
         if not port:
-            messagebox.showinfo(APP_TITLE, "Pick a port first (or hit Scan dimensions).")
+            self.info("Pick a port first (or hit Scan dimensions).", "Which board?")
             return
         if self.port_in_use(port):
             return
@@ -697,16 +710,19 @@ class App:
     def run_update(self, slots: list[DeviceSlot]):
         chosen = [s for s in slots if s.port()]
         if not chosen:
-            messagebox.showinfo(APP_TITLE, "No port picked. Hit 'Scan dimensions' first.")
+            self.info("No port picked. Hit 'Scan dimensions' first.", "Which board?")
             return
         if any(self.port_in_use(s.port()) for s in chosen):
             return
         if len({s.port() for s in chosen}) != len(chosen):
-            messagebox.showerror(APP_TITLE, "Both slots point at the same port. That's how you get paradoxes.")
+            self.error("Both slots point at the same port. That's how you get paradoxes.", "Paradox detected")
             return
-        names = "\n".join(f"• {Kind.LABEL[s.kind]} on {s.port()}:  {s.payload_summary()}" for s in chosen)
-        if not messagebox.askokcancel(APP_TITLE, f"About to flash:\n\n{names}\n\n"
-                                                 "Don't unplug anything until the portal calms down."):
+        details = []
+        for sl in chosen:
+            details.append(f"{Kind.LABEL[sl.kind]} on {sl.port()}")
+            details += ["   " + line.strip() for line in sl.payload_summary().split("\n")]
+        if not self.confirm("Ready to beam?", "About to flash. Don't unplug anything until the portal calms down.",
+                            details, ok="BEAM IT  ▶"):
             return
         backup_first = bool(self.backup_var.get())
 
@@ -871,8 +887,9 @@ class App:
 
     def _close(self):
         self.diag_tab.shutdown()
-        if self.busy and not messagebox.askyesno(APP_TITLE, "A flash is in progress. Quitting now can leave the "
-                                                            "board half-written (it stays recoverable over USB).\n\nQuit anyway?"):
+        if self.busy and not self.confirm(
+                "Flash in progress", "Quitting now can leave the board half-written. It stays recoverable over USB, "
+                "but you'd have to flash it again.", ok="Quit anyway", cancel="Keep flashing", kind="warning"):
             return
         self.root.destroy()
 
