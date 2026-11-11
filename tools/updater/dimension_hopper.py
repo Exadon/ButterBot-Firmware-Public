@@ -215,7 +215,7 @@ class DeviceSlot(tk.Frame):
         self.repo_badge = tk.Label(self.repo_row, text="", bg=PANEL, font=("Segoe UI Black", 8), padx=6)
         self.repos_btn = app.button(self.repo_row, "Repos…", app.open_repo_dialog, small=True)
         self.browse_btn = app.button(self.repo_row, "Browse…", self._browse, small=True)
-        self.fork_build = core.find_fork_build() if kind == Kind.BOT else None
+        self.fork_build = core.find_fork_build(kind)
         self.fork_btn = app.button(self.repo_row, "Use this fork's build", self._use_fork_build, small=True)
         self.src_badge = tk.Label(self.repo_row, text="", bg=PANEL, font=("Segoe UI Black", 8), padx=6)
         self._pack_release_widgets()
@@ -275,7 +275,7 @@ class DeviceSlot(tk.Frame):
             self._select_local(Path(p))
 
     def _use_fork_build(self):
-        self.fork_build = core.find_fork_build() or self.fork_build
+        self.fork_build = core.find_fork_build(self.kind) or self.fork_build
         if self.fork_build:
             self._select_local(self.fork_build)
 

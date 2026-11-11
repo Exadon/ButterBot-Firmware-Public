@@ -45,7 +45,7 @@ CONFIG_PATH = APP_DIR / "config.json"
 # More can be added at runtime (Repos… dialog); those live in config["custom_repos"].
 PRESET_REPOS = {
     "bot": ["CircuitMess/ButterBot-Firmware-Public", "Exadon/ButterBot-Firmware-Public"],
-    "ctrl": ["CircuitMess/ButterBotCtrl-Firmware-Public"],
+    "ctrl": ["CircuitMess/ButterBotCtrl-Firmware-Public", "Exadon/ButterBotCtrl-Firmware-Public"],
 }
 STOCK_OWNER = "CircuitMess"
 
@@ -401,17 +401,37 @@ def plan_from_build_dir(build_dir: Path) -> FlashPlan:
     return FlashPlan(f"local build '{name}' ({len(parts)} parts)", parts, kind, extra, app=app, source="BUILD")
 
 
-def find_fork_build() -> Optional[Path]:
+def _build_project(build_dir: Path) -> str:
+    try:
+        return json.loads((build_dir / "project_description.json").read_text(encoding="utf-8")).get("project_name", "")
+    except (OSError, ValueError):
+        return ""
+
+
+def find_fork_build(kind: str = "bot") -> Optional[Path]:
     """
-    The fork's own build folder, if we can find it: Dimension Hopper lives in <repo>/tools/updater
-    (the exe in <repo>/tools/updater/dist), so walk up looking for <repo>/build/flasher_args.json.
+    The fork's own build folder for a device, if we can find it. Dimension Hopper lives in the robot
+    repo's tools/updater (the exe in tools/updater/dist), so walk up to the robot repo; the controller
+    repo is expected next to it (e.g. C:\\bb\\fw and C:\\bb\\ctrl). A build counts if it has
+    flasher_args.json and its project name says which device it's for.
     """
-    starts = [Path(sys.executable).resolve(), Path(__file__).resolve()]
-    for start in starts:
-        for parent in list(start.parents)[:5]:
-            cand = parent / "build"
-            if (cand / "flasher_args.json").exists() and (parent / "main").is_dir():
-                return cand
+    robot_root = None
+    for start in (Path(sys.executable), Path(__file__)):
+        for parent in list(Path(os.path.abspath(start)).parents)[:5]:
+            if (parent / "main").is_dir() and (parent / "tools" / "updater").is_dir():
+                robot_root = parent
+                break
+        if robot_root:
+            break
+    if robot_root is None:
+        return None
+
+    candidates = [robot_root] if kind == Kind.BOT else \
+        sorted(p for p in robot_root.parent.iterdir() if p.is_dir() and p != robot_root)
+    for repo in candidates:
+        build = repo / "build"
+        if (build / "flasher_args.json").exists() and kind_from_project(_build_project(build)) == kind:
+            return build
     return None
 
 
