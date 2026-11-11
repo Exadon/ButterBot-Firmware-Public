@@ -562,3 +562,81 @@ def open_folder(path: Path):
     if sys.platform == "win32":
         os.startfile(str(path))  # noqa: S606 - opening our own data folder in Explorer
 
+
+
+# ---------------------------------------------------------------------------------------------
+# Live status (fork firmware prints "[BBSTAT] ..." on the serial console every 5 s)
+# ---------------------------------------------------------------------------------------------
+
+STATUS_RE = re.compile(r"\[BBSTAT\]((?:\s+\w+=\S+)+)")
+
+
+@dataclass
+class DeviceStatus:
+    port: str
+    fields: dict = field(default_factory=dict)
+    error: str = ""
+
+    @property
+    def battery(self) -> Optional[int]:
+        try:
+            v = int(self.fields.get("batt", "-1"))
+            return v if v >= 0 else None
+        except ValueError:
+            return None
+
+    def summary(self) -> str:
+        if self.error:
+            return self.error
+        f = self.fields
+        parts = []
+        if self.battery is not None:
+            parts.append(f"battery {self.battery}%")
+        if f.get("charge") and f["charge"] != "unknown":
+            parts.append(f["charge"])
+        if f.get("link"):
+            parts.append("controller link " + f["link"] if f.get("dev") == "bot" else "robot link " + f["link"])
+        if f.get("fw"):
+            parts.append("fw " + f["fw"])
+        return "  ·  ".join(parts) or "status line had no fields"
+
+
+def read_status(port: str, timeout_s: float = 12.0) -> DeviceStatus:
+    """
+    Listens on the port for a [BBSTAT] line WITHOUT resetting the board: DTR/RTS are set inactive before
+    opening, so the CH340 auto-reset circuit isn't triggered and the firmware keeps running.
+    Needs fork firmware (stock firmware never prints a status line).
+    """
+    import serial
+
+    res = DeviceStatus(port)
+    if not port_exists(port):
+        res.error = f"{port} isn't there. Is the board switched on?"
+        return res
+
+    with _esptool_lock:  # never at the same time as a flash/probe on any port
+        s = serial.Serial()
+        s.port, s.baudrate, s.timeout = port, 115200, 0.25
+        s.dtr = False
+        s.rts = False
+        try:
+            s.open()
+        except serial.SerialException as e:
+            res.error = f"Couldn't open {port}: {e}"
+            return res
+        try:
+            buf = b""
+            end = time.time() + timeout_s
+            while time.time() < end:
+                buf += s.read(512)
+                for line in buf.decode("utf-8", "replace").splitlines():
+                    if m := STATUS_RE.search(line):
+                        res.fields = dict(kv.split("=", 1) for kv in m.group(1).split())
+                        return res
+                buf = buf[-2048:]
+        finally:
+            s.close()
+
+    res.error = ("No status line received. The board may be in bootloader mode (after a probe or backup - "
+                 "power-cycle it), or running firmware without status reporting (stock / older fork builds).")
+    return res

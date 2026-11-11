@@ -9,9 +9,13 @@ if (Get-Process DimensionHopper -ErrorAction SilentlyContinue) {
 }
 .\.venv\Scripts\python -m pip install -q --disable-pip-version-check -r requirements.txt
 if ($LASTEXITCODE -ne 0) { throw "pip install failed" }
+# Voice-command list for the Guide tab, regenerated from the firmware sources on every build
+.\.venv\Scripts\python gen_guide_data.py
+if ($LASTEXITCODE -ne 0) { throw "gen_guide_data.py failed" }
 $before = if (Test-Path $exe) { (Get-Item $exe).LastWriteTime } else { [datetime]::MinValue }
 .\.venv\Scripts\pyinstaller --noconfirm --clean --onefile --windowed `
     --name DimensionHopper --icon portal.ico --add-data "portal.ico;." --add-data "bot.png;." --add-data "controller.png;." `
+    --add-data "bot_guide.png;." --add-data "controller_guide.png;." --add-data "guide_data.json;." `
     --collect-all esptool dimension_hopper.py
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed" }
 if (-not (Test-Path $exe) -or (Get-Item $exe).LastWriteTime -le $before) { throw "dist\DimensionHopper.exe was not updated" }

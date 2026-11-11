@@ -76,7 +76,7 @@ def portal():
 
 
 # ------------------------------------------------------------------------------------------
-def bot():
+def bot(out_size=(84, 96), name="bot.png"):
     """ButterBot in a flat cartoon style: cube head (shaded top + side) with a big lens and wire loops,
     tapered neck on a thin column, long jointed arms with flat pincer feet, tank-tread base."""
     img, d = canvas(64, 72)
@@ -134,11 +134,11 @@ def bot():
     for x in (21.5, 32, 42.5):
         d.ellipse(S(x - 3.6, 60, x + 3.6, 67.2), fill=(54, 56, 60), outline=INK, width=SS)
         d.ellipse(S(x - 1.8, 61.8, x + 1.8, 65.4), fill=WHEEL)
-    finish_halo(img, (84, 96), HERE / "bot.png")
+    finish_halo(img, out_size, HERE / name)
 
 
 # ------------------------------------------------------------------------------------------
-def controller():
+def controller(out_size=(60, 110), name="controller.png"):
     """Controller, as built: portrait green PCB, ESP32 module + green LED up top, colour screen,
     ON/OFF toggle, big black joystick, red/black buttons left, red/yellow buttons right."""
     img, d = canvas(50, 92)
@@ -196,11 +196,14 @@ def controller():
     d.ellipse(S(20.5, 64, 25.5, 68.5), fill=(84, 88, 94))
     # USB-C at the bottom edge
     d.rounded_rectangle(S(21, 86.5, 29, 90.5), radius=1.2 * SS, fill=(186, 190, 196), outline=(110, 116, 122), width=ow)
-    finish_halo(img, (60, 110), HERE / "controller.png")
+    finish_halo(img, out_size, HERE / name)
 
 
 if __name__ == "__main__":
     portal()
     bot()
     controller()
+    # larger renders for the Guide tab diagrams
+    bot((196, 224), "bot_guide.png")
+    controller((150, 276), "controller_guide.png")
     print("art written to", HERE)
