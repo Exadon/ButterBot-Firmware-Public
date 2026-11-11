@@ -1,4 +1,5 @@
 #include <Core/EntryPoint.h>
+#include "Util/MemMark.h"
 #include "driver/gpio.h"
 #include <nvs_flash.h>
 #include <esp_random.h>
@@ -346,6 +347,7 @@ protected:
 		       (unsigned) (heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024),
 		       (unsigned) (heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL) / 1024),
 		       (unsigned) (heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024));
+		MemMark::dumpTasks();
 	}
 
 	virtual void tick(float deltaTime) noexcept override{
@@ -425,6 +427,7 @@ private:
 				if(buf[i] == '\n' || buf[i] == '\r'){
 					if(line == "diag on") diagUntil = millis() + DiagHoldMs;
 					else if(line == "diag off") diagUntil = 0;
+					else if(line == "tasks"){ MemMark::mark("on request"); MemMark::dumpTasks(); }
 					line.clear();
 				}else if(line.size() < 32){
 					line += buf[i];

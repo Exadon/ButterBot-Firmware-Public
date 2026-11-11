@@ -1,4 +1,5 @@
 #include "RCState.h"
+#include "Util/MemMark.h"
 #include <cmath>
 #include <algorithm>
 #include <Periphery/WiFi.h>
@@ -38,7 +39,9 @@ RCState::RCState(BBStateMachine* sm) : State(sm){
 	sm->bindState(com->OnDriveData, this, &RCState::onDriveData);
 	sm->bindState(com->OnConnStatus, this, &RCState::onBTDisconnect);
 
+	MemMark::mark("rc: start");
 	wifi = newObject<WiFi>(sm);
+	MemMark::mark("rc: wifi");
 	if(wifi == nullptr){
 		CMF_LOG(RCState, Warning, "WiFi is nullptr in postInitProperties.");
 		return;
@@ -54,8 +57,10 @@ RCState::RCState(BBStateMachine* sm) : State(sm){
 	sm->bindState(wifiSta->OnStationEvent, this, &RCState::onWifiDisconnect);
 
 	wifiSta->connect();
+	MemMark::mark("rc: sta");
 
 	feed = newObject<Feed>(sm);
+	MemMark::mark("rc: feed");
 }
 
 RCState::~RCState(){

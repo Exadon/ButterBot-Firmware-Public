@@ -1,4 +1,5 @@
 #include "AudioFrontend.h"
+#include "Util/MemMark.h"
 #include <algorithm>
 #include <cstring>
 #include <limits>
@@ -519,7 +520,9 @@ void AudioFrontend::loadModel(){
 
 	uint32_t startTime = millis();
 
+	MemMark::mark("sr: start");
 	models = esp_srmodel_init("model"); // partition label defined in partitions.csv
+	MemMark::mark("sr: models");
 
 	afe_config = afe_config_init("MM", models, AFE_TYPE_SR, AFE_MODE_HIGH_PERF);
 	afe_config->wakenet_init = false;
@@ -551,6 +554,7 @@ void AudioFrontend::loadModel(){
 
 	afe_handle = esp_afe_handle_from_config(afe_config);
 	afe_data = afe_handle->create_from_config(afe_config);
+	MemMark::mark("sr: afe");
 
 	//Multinet (speech recognition)
 	char* mn_name = esp_srmodel_filter(models, ESP_MN_PREFIX, ESP_MN_ENGLISH);
@@ -559,6 +563,7 @@ void AudioFrontend::loadModel(){
 
 	multinet_data = multinet_handle->create(mn_name, MultinetDuration);
 	multinet_handle->set_det_threshold(multinet_data, MultinetDetThreshold);
+	MemMark::mark("sr: multinet");
 
 	ESP_ERROR_CHECK(esp_mn_commands_alloc(multinet_handle, multinet_data));
 	ESP_ERROR_CHECK(esp_mn_commands_clear());
@@ -567,6 +572,7 @@ void AudioFrontend::loadModel(){
 		CMF_LOG(AudioFrontend, Error, "%d phrases with errors", err->num);
 	}
 
+	MemMark::mark("sr: commands");
 	CMF_LOG(AudioFrontend, LogLevel::Debug, "AFE time: %d ms", (int)millis() - (int)startTime);
 
 	const size_t feedBufferLength = (size_t)afe_handle->get_feed_chunksize(afe_data) * afe_handle->get_channel_num(afe_data);
