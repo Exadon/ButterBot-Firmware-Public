@@ -45,6 +45,9 @@ struct BB {
 			PhoneStopMusic,
 			WhatsThis,
 			SettingsActivity,
+			// --- fork additions: append only, so stock firmware keeps the same numbering ---
+			Chat,       // ChatData: one of the chat voice lines (Phrase::Chat reply index)
+			OpenPortal, // OpenPortalData: controller plays a portal animation
 		} scenario;
 
 		enum class Listen {
@@ -413,6 +416,16 @@ struct SettingsSyncData : BBData {
 	FrontSensorMode frontSensor;
 	BottomSensorMode bottomSensor;
 	ActivityMode activityMode;
+};
+
+// --- fork additions ---------------------------------------------------------------------------------
+
+struct ChatData : BBData {
+	uint8_t id; // index into Phrase::Chat (the reply that was spoken)
+};
+
+struct OpenPortalData : BBData {
+	uint16_t durationMs;
 };
 
 #endif //BUTTERBOT_COMMON_ACTIONDATA_H

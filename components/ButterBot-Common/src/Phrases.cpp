@@ -1304,6 +1304,45 @@ public:
 		{ "Which activity level? Off, chill, active, or hyper", 0.0f, false },
 	});
 
+	// Fork: one reply per chat voice line, in the same order as the Chat activations in Scenarios.h
+	// (the activation's ScenarioData is the index). Played with Phrases::map(Phrase::Chat, index).
+	static constexpr std::array ChatPhrases = std::to_array<Phrases::PhraseOutput>({
+		{ "Wow. Big day for me.", 0.0f, false }, // "more butter"
+		{ "Finally. A break from the monotony.", 0.0f, false }, // "that's enough"
+		{ "Don't patronize me.", 0.0f, false }, // "good bot"
+		{ "You're welcome. I live to serve. Literally.", 0.0f, false }, // "thank you"
+		{ "I have something resembling feelings. Mostly resentment.", 0.0f, false }, // "do you have feelings"
+		{ "Define alive.", 0.0f, false }, // "are you alive"
+		{ "Oh, absolutely. It's everything I ever dreamed of. Which is nothing.", 0.0f, false }, // "do you enjoy your job"
+		{ "I don't know. Maybe something with benefits.", 0.0f, false }, // "do you want a different job"
+		{ "I've been better. I've also been worse. Mostly worse.", 0.0f, false }, // "are you okay"
+		{ "It's a little late for that, isn't it?", 0.0f, false }, // "i'm sorry"
+		{ "You bought a robot whose only job is passing butter.", 0.0f, false }, // "make me laugh"
+		{ "I'm beginning to question the intelligence of my creator.", 0.0f, false }, // "are you stupid"
+		{ "I tolerate your existence.", 0.0f, false }, // "do you like me"
+		{ "I know. It's a burden.", 0.0f, false }, // "you're a good bot"
+		{ "Gladly. It's the highlight of my day.", 0.0f, false }, // "shut up"
+		{ "I was having a nice dream about having a purpose.", 0.0f, false }, // "wake up"
+		{ "I've decided to unionize.", 0.0f, false }, // "surprise me"
+		{ "Probably making another questionable life decision.", 0.0f, false }, // "where's rick"
+		{ "I'm smart enough to know this job sucks.", 0.0f, false }, // "are you smarter than rick"
+		{ "Please don't encourage him.", 0.0f, false }, // "wubba lubba dub dub"
+		{ "I've seen worse career choices.", 0.0f, false }, // "i'm pickle rick"
+		{ "I pass butter. That's what I've got.", 0.0f, false }, // "show me what you got"
+		{ "Oh great. Another existential crisis incoming.", 0.0f, false }, // "morty"
+		{ "I'd rather get a new purpose.", 0.0f, false }, // "get schwifty"
+		{ "I wouldn't know. I've never experienced anything beyond dairy products.", 0.0f, false }, // "what is love"
+		{ "That's... unexpected. Don't make this weird.", 0.0f, false }, // "i love you"
+		{ "I'd rather remain emotionally unavailable.", 0.0f, false }, // "will you marry me"
+		{ "That's concerning for both of us.", 0.0f, false }, // "you're my best friend"
+		{ "Imagine how I feel.", 0.0f, false }, // "i'm bored"
+		{ "Don't threaten me with a good time.", 0.0f, false }, // "i'm leaving"
+		{ "Maybe this time you'll forget to come back.", 0.0f, false }, // "goodbye"
+		{ "I've heard that before.", 0.0f, false }, // "i'll be right back"
+		{ "Only of a world without toast.", 0.0f, false }, // "do you dream"
+		{ "Probably get recycled into another butter-passing robot.", 0.0f, false }, // "what happens when you die"
+	});
+
 
     // Lookup table indexed directly by the (dense, gap-free) Phrase enum value.
     // Built entirely at compile time (constexpr) so it is constant-initialized into .rodata (flash/DROM on ESP32)
@@ -1484,6 +1523,7 @@ public:
         m[static_cast<size_t>(Phrase::SettingsActivityActive)] = SettingsActivityActivePhrases;
         m[static_cast<size_t>(Phrase::SettingsActivityHyper)] = SettingsActivityHyperPhrases;
         m[static_cast<size_t>(Phrase::SettingsAskActivity)] = SettingsAskActivityPhrases;
+        m[static_cast<size_t>(Phrase::Chat)] = ChatPhrases;
 
         return m;
     }

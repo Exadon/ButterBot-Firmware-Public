@@ -41,6 +41,10 @@
 #include "Routines/PowerOffRoutine.h"
 #include "Routines/DanceRoutine.h"
 #include "Routines/SettingsActivityRoutine.h"
+#include "Routines/ChatRoutine.h"
+#include "Routines/PortalRoutine.h"
+#include <array>
+#include <utility>
 
 namespace {
 	struct ScenarioRoutineMapping {
@@ -99,6 +103,7 @@ namespace {
 		{ { BB::Action::Scenario::FaceDetect, FaceScenarioData{ FaceScenarioData::Phase::Remember } }, &makeRoutine<RememberFaceRoutine> },
 		{ { BB::Action::Scenario::FaceDetectForget, FaceScenarioData{ FaceScenarioData::Phase::Forget } }, &makeRoutine<ForgetFaceRoutine> },
 		{ { BB::Action::Scenario::Dance, {} }, &makeRoutine<DanceRoutine> },
+		{ { BB::Action::Scenario::OpenPortal, {} }, &makeRoutine<PortalRoutine> },
 		{ { BB::Action::Scenario::SettingsActivity, ActivityScenarioData{ ActivityScenarioData::Level::None } }, &makeRoutine<SettingsActivityRoutine> },
 		{ { BB::Action::Scenario::SettingsActivity, ActivityScenarioData{ ActivityScenarioData::Level::Off } }, &makeRoutine<SettingsActivityOffRoutine> },
 		{ { BB::Action::Scenario::SettingsActivity, ActivityScenarioData{ ActivityScenarioData::Level::Chill } }, &makeRoutine<SettingsActivityChillRoutine> },
@@ -107,7 +112,21 @@ namespace {
 	};
 }
 
+namespace {
+	// Chat lines: one ChatRoutine<N> factory per line, generated for 0..ChatLineCount-1
+	template<size_t... I>
+	constexpr std::array<RoutineFactory, sizeof...(I)> makeChatFactories(std::index_sequence<I...>){
+		return { &makeRoutine<ChatRoutine<static_cast<uint8_t>(I)>>... };
+	}
+
+	constexpr std::array<RoutineFactory, ChatLineCount> ChatFactories = makeChatFactories(std::make_index_sequence<ChatLineCount>{});
+}
+
 RoutineFactory routineForScenario(const std::pair<BB::Action::Scenario, ScenarioData>& scenario){
+	if(scenario.first == BB::Action::Scenario::Chat){
+		return scenario.second.raw < ChatLineCount ? ChatFactories[scenario.second.raw] : nullptr;
+	}
+
 	for(const ScenarioRoutineMapping& mapping : Mappings){
 		if(mapping.scenario == scenario){
 			return mapping.factory;
