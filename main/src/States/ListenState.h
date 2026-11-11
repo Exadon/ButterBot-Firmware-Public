@@ -15,7 +15,7 @@ public:
     static void preallocate();
 
 private:
-    Com* com;
+    Com* com = nullptr; // Was uninitialized; the ctor can bail out before setting it and aborted() null-checks it
 
     bool timedOut = false;
 

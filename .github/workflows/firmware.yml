@@ -1,0 +1,55 @@
+# Builds the ButterBot firmware on every push / PR, and publishes a GitHub release with a single
+# merged full-flash image when a version tag (v*) is pushed. That image is exactly what
+# Dimension Hopper (tools/updater) downloads for "Latest GitHub release".
+name: Firmware
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to create releases on tag pushes
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and merge image (ESP-IDF v5.5.3)
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.5.3
+          target: esp32s3
+          # merge-bin writes build/ButterBot-merged.bin: bootloader, partitions, app, SPIFFS and all models,
+          # one file flashed at 0x0 (same layout as the official CircuitMess releases)
+          command: idf.py build && idf.py merge-bin -o ButterBot-merged.bin
+
+      - name: Name the image
+        id: name
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then VER="${GITHUB_REF_NAME}"; else VER="$(git rev-parse --short HEAD)"; fi
+          OUT="ButterBot-${VER}.bin"
+          sudo cp build/ButterBot-merged.bin "$OUT"
+          sudo chown "$(id -u):$(id -g)" "$OUT"
+          echo "file=$OUT" >> "$GITHUB_OUTPUT"
+          ls -l "$OUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.name.outputs.file }}
+          path: ${{ steps.name.outputs.file }}
+          if-no-files-found: error
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.name.outputs.file }}
+          generate_release_notes: true
+          body: |
+            Flash with **Dimension Hopper** (`tools/updater`): pick "Latest GitHub release" and enter `${{ github.repository }}`.
+            Or manually: `esptool.py -c esp32s3 -b 921600 -p <PORT> write_flash 0 ${{ steps.name.outputs.file }}`

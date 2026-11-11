@@ -278,8 +278,10 @@ void ListenState::onPhrase(bool recognized, int index, const std::string& transc
     	CMF_LOG(ListenState, LogLevel::Info, "Listen result: recognized=%d, index=%d, transcript='%s', confidence=%.2f",
 			recognized, index, transcript.c_str(), confidence);
 
-        ListenData listenData{.phase = ListenData::Phase::NotUnderstand};
-        com->sendData(BB::State::Listen, BB::Action::Listen{}, listenData);
+        if(com != nullptr){
+            ListenData listenData{.phase = ListenData::Phase::NotUnderstand};
+            com->sendData(BB::State::Listen, BB::Action::Listen{}, listenData);
+        }
         timedOut = true;
         sm->transitionTo<IdleState>();
         return;
@@ -336,10 +338,16 @@ void ListenState::onCommand(Ctrl::Command cmd) {
 }
 
 void ListenState::aborted(){
-	if(ServiceLocator::ScenarioRoutineServiceInstance){
+	// Previously gated on ScenarioRoutineService (unrelated) and passed Phrases::get()'s -1 "no phrase"
+	// result straight into map(), and could hand play() a null generator.
+	if(ServiceLocator::SpeechAudioGenInstance && ServiceLocator::SpeechGenInstance){
 		if(Audio* audio = ApplicationStatics::getApplication()->getService<Audio>()){
+			const int16_t id = Phrases::get(Phrase::ListenAbort);
+			const std::string text = id >= 0 ? Phrases::map(Phrase::ListenAbort, id) : std::string();
 			audio->stop();
-			audio->play(ServiceLocator::SpeechAudioGenInstance.get(), std::make_unique<SpeechAudioSource>(SpeechGen::InputType::Text, Phrases::map(Phrase::ListenAbort, Phrases::get(Phrase::ListenAbort))));
+			if(!text.empty()){
+				audio->play(ServiceLocator::SpeechAudioGenInstance.get(), std::make_unique<SpeechAudioSource>(SpeechGen::InputType::Text, text));
+			}
 		}
 	}
 

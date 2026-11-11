@@ -15,6 +15,7 @@
 #include "glm.hpp"
 #include "gtx/vector_angle.inl"
 #include "BBStateMachine.h"
+#include "Audio/SoundEffects.h"
 
 DEFINE_LOG(RCState)
 
@@ -108,31 +109,7 @@ void RCState::playRandomSound(){
 		return;
 	}
 
-	static constexpr const char* Sounds[] = {
-		"/spiffs/listen/lasers1/phaseJump1.aac",
-		"/spiffs/listen/lasers1/phaseJump2.aac",
-		"/spiffs/listen/lasers1/phaseJump3.aac",
-		"/spiffs/listen/lasers1/phaseJump4.aac",
-		"/spiffs/listen/lasers1/phaseJump5.aac",
-		"/spiffs/listen/lasers1/phaserDown1.aac",
-		"/spiffs/listen/lasers1/phaserDown2.aac",
-		"/spiffs/listen/lasers1/phaserDown3.aac",
-		"/spiffs/listen/lasers2/laser1.aac",
-		"/spiffs/listen/lasers2/laser2.aac",
-		"/spiffs/listen/lasers2/laser3.aac",
-		"/spiffs/listen/lasers2/laser4.aac",
-		"/spiffs/listen/lasers2/laser5.aac",
-		"/spiffs/listen/lasers2/laser6.aac",
-		"/spiffs/listen/lasers2/laser7.aac",
-		"/spiffs/listen/lasers2/laser8.aac",
-		"/spiffs/listen/lasers2/laser9.aac",
-		"/spiffs/listen/robot/robot_1.aac",
-		"/spiffs/listen/robot/robot_2.aac",
-		"/spiffs/listen/robot/robot_3.aac",
-		"/spiffs/listen/robot/robot_4.aac",
-	};
-
-	const char* path = Sounds[rand() % std::size(Sounds)];
+	const char* path = SoundEffects::Random[rand() % std::size(SoundEffects::Random)];
 
 	audio->play(aacGen, std::make_unique<FileAudioSource>(path));
 }

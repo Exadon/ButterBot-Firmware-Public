@@ -257,7 +257,12 @@ RoutineFactory IdleState::pickRandomRoutine() const{
 		}
 	}
 
-	const size_t random = rand() % (weightSum + 1);
+	if(weightSum == 0){
+		return nullptr;
+	}
+
+	// Was rand() % (weightSum + 1) with '<=': that gave the first routine one extra slot, so the weights were skewed.
+	const size_t random = rand() % weightSum;
 
 	size_t sum = 0;
 	for(const RandomRoutineDef& routineDef : AnyPowerRandomRoutines){
@@ -267,7 +272,7 @@ RoutineFactory IdleState::pickRandomRoutine() const{
 
 		sum += routineDef.weight;
 
-		if(random <= sum){
+		if(random < sum){
 			return routineDef.routine;
 		}
 	}
@@ -283,7 +288,7 @@ RoutineFactory IdleState::pickRandomRoutine() const{
 
 		sum += routineDef.weight;
 
-		if(random <= sum){
+		if(random < sum){
 			return routineDef.routine;
 		}
 	}

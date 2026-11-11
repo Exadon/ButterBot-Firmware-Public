@@ -1,10 +1,27 @@
 #include "BaseBoard.h"
+#include <algorithm>
 #include "driver/gpio.h"
 #include "Pins.hpp"
 #include <Util/stdafx.h>
 #include <Util/ServiceLocator.h>
 
 DEFINE_LOG(BaseBoard)
+
+/**
+ * Runtime I2C errors (a noisy bus, a brown-out on the base MCU while motors spin up) used to go
+ * through ESP_ERROR_CHECK, which aborts and reboots the whole robot. Log and carry on instead -
+ * the motor dead-man switch on the base board stops the motors if writes keep failing.
+ */
+static bool checkI2C(esp_err_t err, const char* what){
+	if(err == ESP_OK){
+		return true;
+	}
+
+	CMF_LOG(BaseBoard, LogLevel::Error, "I2C op failed (%s): %s", what, esp_err_to_name(err));
+	return false;
+}
+
+#define BB_I2C_CHECK(x) checkI2C((x), #x)
 
 SemaphoreHandle_t BaseBoard::sem;
 std::atomic<bool> BaseBoard::proxRebaselineDue{ false };
@@ -23,8 +40,8 @@ BaseBoard::BaseBoard(std::unique_ptr<I2CDevice> device, bool internalStack) : As
 	}
 
 	if(id != I2CAddress){
-		CMF_LOG(BaseBoard, LogLevel::Error, "ID missmatch: expected %d, got %d", I2CAddress, id);
-		return;
+		// Previously returned here, leaving sem and the timers null so the first tick()/setMotors() crashed.
+		CMF_LOG(BaseBoard, LogLevel::Error, "ID mismatch: expected %d, got %d - continuing anyway", I2CAddress, id);
 	}
 
 	sem = xSemaphoreCreateBinary();
@@ -47,23 +64,26 @@ BaseBoard::BaseBoard(std::unique_ptr<I2CDevice> device, bool internalStack) : As
 void BaseBoard::setMotors(int8_t left, int8_t right){
 	left = -left;
 	right = -right;
-	if(left == registerState.motorLeft && right == registerState.motorRight) return;
-	motorTimer->stop();
 
 	regStateMutex.lock();
+	if(left == registerState.motorLeft && right == registerState.motorRight){
+		regStateMutex.unlock();
+		return;
+	}
+	motorTimer->stop();
 	registerState.motorLeft = left;
 	registerState.motorRight = right;
 	const bool scanning = registerState.proximityScanning && !isBottomSensorOn();
 	regStateMutex.unlock();
 
 	if(scanning){
-		ESP_ERROR_CHECK(dev->writeRegister(ProximityScanning, static_cast<uint8_t>(0)));
+		BB_I2C_CHECK(dev->writeRegister(ProximityScanning, static_cast<uint8_t>(0)));
 		delayMillis(ProxStopSettleMs);
 	}
 
 	//Writing to both registers sequentially
 	int8_t arr[] = { left, right };
-	ESP_ERROR_CHECK(dev->writeRegister(MotorL, (uint8_t*)&arr, 2));
+	BB_I2C_CHECK(dev->writeRegister(MotorL, (uint8_t*)&arr, 2));
 
 	if(scanning){
 		proxTimer->reset();
@@ -74,21 +94,23 @@ void BaseBoard::setMotors(int8_t left, int8_t right){
 
 void BaseBoard::setMotorLeft(int8_t value){
 	value = -value;
-	if(value == registerState.motorLeft) return;
-
-	motorTimer->stop();
 
 	regStateMutex.lock();
+	if(value == registerState.motorLeft){
+		regStateMutex.unlock();
+		return;
+	}
+	motorTimer->stop();
 	registerState.motorLeft = value;
 	const bool scanning = registerState.proximityScanning && !isBottomSensorOn();
 	regStateMutex.unlock();
 
 	if(scanning){
-		ESP_ERROR_CHECK(dev->writeRegister(ProximityScanning, static_cast<uint8_t>(0)));
+		BB_I2C_CHECK(dev->writeRegister(ProximityScanning, static_cast<uint8_t>(0)));
 		delayMillis(ProxStopSettleMs);
 	}
 
-	ESP_ERROR_CHECK(dev->writeRegister(MotorL, (uint8_t*)&value, 1));
+	BB_I2C_CHECK(dev->writeRegister(MotorL, (uint8_t*)&value, 1));
 
 	if(scanning){
 		proxTimer->reset();
@@ -99,21 +121,23 @@ void BaseBoard::setMotorLeft(int8_t value){
 
 void BaseBoard::setMotorRight(int8_t value){
 	value = -value;
-	if(value == registerState.motorRight) return;
-
-	motorTimer->stop();
 
 	regStateMutex.lock();
+	if(value == registerState.motorRight){
+		regStateMutex.unlock();
+		return;
+	}
+	motorTimer->stop();
 	registerState.motorRight = value;
 	const bool scanning = registerState.proximityScanning && !isBottomSensorOn();
 	regStateMutex.unlock();
 
 	if(scanning){
-		ESP_ERROR_CHECK(dev->writeRegister(ProximityScanning, static_cast<uint8_t>(0)));
+		BB_I2C_CHECK(dev->writeRegister(ProximityScanning, static_cast<uint8_t>(0)));
 		delayMillis(ProxStopSettleMs);
 	}
 
-	ESP_ERROR_CHECK(dev->writeRegister(MotorR, (uint8_t*)&value, 1));
+	BB_I2C_CHECK(dev->writeRegister(MotorR, (uint8_t*)&value, 1));
 
 	if(scanning){
 		proxTimer->reset();
@@ -136,7 +160,7 @@ void BaseBoard::setProximityScanning(bool enabled){
 		return;
 	}
 
-	ESP_ERROR_CHECK(dev->writeRegister(ProximityScanning, (uint8_t*)&enabled, 1));
+	BB_I2C_CHECK(dev->writeRegister(ProximityScanning, (uint8_t*)&enabled, 1));
 }
 
 void BaseBoard::rebaselineProximity(){
@@ -148,24 +172,24 @@ void BaseBoard::rebaselineProximity(){
 		return;
 	}
 
-	ESP_ERROR_CHECK(dev->writeRegister(ProximityScanning, static_cast<uint8_t>(0)));
+	BB_I2C_CHECK(dev->writeRegister(ProximityScanning, static_cast<uint8_t>(0)));
 	delayMillis(ProxStopSettleMs);
-	ESP_ERROR_CHECK(dev->writeRegister(ProximityScanning, static_cast<uint8_t>(1)));
+	BB_I2C_CHECK(dev->writeRegister(ProximityScanning, static_cast<uint8_t>(1)));
 }
 
 // Absolute threshold I2C commands removed — Base uses relative band logic now
 void BaseBoard::setProximityFrontThreshold([[maybe_unused]] uint16_t threshold){
 	// registerState.proximityFrontThreshold = threshold;
-	// ESP_ERROR_CHECK(dev->writeRegister(ProximityFrontThresh, (uint8_t*)&threshold, 2));
+	// BB_I2C_CHECK(dev->writeRegister(ProximityFrontThresh, (uint8_t*)&threshold, 2));
 }
 
 void BaseBoard::setProximityBotThreshold([[maybe_unused]] uint16_t threshold){
 	// registerState.proximityBottomThreshold = threshold;
-	// ESP_ERROR_CHECK(dev->writeRegister(ProximityBottomThresh, (uint8_t*)&threshold, 2));
+	// BB_I2C_CHECK(dev->writeRegister(ProximityBottomThresh, (uint8_t*)&threshold, 2));
 }
 
 void BaseBoard::requestProximityState(){
-	ESP_ERROR_CHECK(dev->write(ProximityStateRequest));
+	BB_I2C_CHECK(dev->write(ProximityStateRequest));
 }
 
 ChargingState BaseBoard::getChargingState(){
@@ -193,7 +217,7 @@ void BaseBoard::tick(float deltaTime) noexcept{
 	if(registerState.motorLeft != 0 || registerState.motorRight != 0){
 		//Writing to both registers sequentially
 		int8_t arr[] = { registerState.motorLeft, registerState.motorRight };
-		ESP_ERROR_CHECK(dev->writeRegister(MotorL, (uint8_t*)&arr, 2));
+		BB_I2C_CHECK(dev->writeRegister(MotorL, (uint8_t*)&arr, 2));
 		updateMotorTimer();
 	}
 	regStateMutex.unlock();
@@ -209,20 +233,30 @@ void BaseBoard::tick(float deltaTime) noexcept{
 	}
 
 	uint8_t numEvents = 0;
-	ESP_ERROR_CHECK(dev->readRegister(EventCount, numEvents));
+	if(!BB_I2C_CHECK(dev->readRegister(EventCount, numEvents))){
+		numEvents = 0;
+	}
+
 	std::queue<EventData> queue;
+	// Read in bounded chunks: the old code put numEvents (up to 255) EventData on this task's 3 KB stack,
+	// and looped forever if the base board kept reporting events while a read failed.
+	static constexpr uint8_t MaxEventsPerRead = 8;
+	static constexpr uint8_t MaxReadRounds = 16;
+	for(uint8_t pass = 0; numEvents > 0 && pass < MaxReadRounds; ++pass){
+		const uint8_t toRead = std::min(numEvents, MaxEventsPerRead);
+		EventData rawData[MaxEventsPerRead];
+		uint8_t wData[2] = { EventsGet, toRead };
+		if(!BB_I2C_CHECK(dev->write_read(wData, 2, (uint8_t*) rawData, sizeof(EventData) * toRead))){
+			break;
+		}
 
-	while(numEvents > 0){
-		EventData rawData[numEvents];
-
-		uint8_t wData[2] = { EventsGet, numEvents };
-		ESP_ERROR_CHECK(dev->write_read(wData, 2, (uint8_t*) rawData, sizeof(EventData) * numEvents));
-
-		for(uint8_t i = 0; i < numEvents; i++){
+		for(uint8_t i = 0; i < toRead; i++){
 			queue.emplace(rawData[i]);
 		}
 
-		ESP_ERROR_CHECK(dev->readRegister(EventCount, numEvents));
+		if(!BB_I2C_CHECK(dev->readRegister(EventCount, numEvents))){
+			break;
+		}
 	}
 
 	gpio_intr_enable((gpio_num_t) MOTOR_BRD_INT);
@@ -236,7 +270,7 @@ void BaseBoard::tick(float deltaTime) noexcept{
 void BaseBoard::reset(){
 	motorTimer->stop();
 
-	ESP_ERROR_CHECK(dev->write(Reset));
+	BB_I2C_CHECK(dev->write(Reset));
 	registerState = {};
 
 	delayMillis(ResetDelay);
@@ -252,7 +286,7 @@ void BaseBoard::updateMotorTimer(){
 
 uint8_t BaseBoard::getEventCount(){
 	uint8_t numEvents = 0;
-	ESP_ERROR_CHECK(dev->readRegister(EventCount, numEvents));
+	BB_I2C_CHECK(dev->readRegister(EventCount, numEvents));
 	return numEvents;
 }
 

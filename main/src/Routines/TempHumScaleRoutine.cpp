@@ -18,7 +18,7 @@ static bool playScalePhrase(Phrase phrase, BB::Action::Scenario action, Settings
     const Application* app = ApplicationStatics::getApplication();
     if(app == nullptr){
         ESP_LOGE(TAG, "Application instance is nullptr");
-        abort();
+        return false;
     }
 
     Audio* audio = app->getService<Audio>();
@@ -26,7 +26,7 @@ static bool playScalePhrase(Phrase phrase, BB::Action::Scenario action, Settings
 
     if(audio == nullptr || !ServiceLocator::SpeechAudioGenInstance || !ServiceLocator::SpeechGenInstance || com == nullptr){
         ESP_LOGE(TAG, "Missing required service(s)");
-        abort();
+        return false;
     }
 
     if(ServiceLocator::SettingsInstance){
