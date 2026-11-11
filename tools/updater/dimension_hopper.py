@@ -71,7 +71,9 @@ def load_art(name: str, size: int):
         return None
     try:
         from PIL import Image, ImageTk
-        return ImageTk.PhotoImage(Image.open(path).resize((size, size), Image.LANCZOS))
+        im = Image.open(path)
+        scale = size / max(im.size)  # fit inside size x size, keeping the aspect ratio
+        return ImageTk.PhotoImage(im.resize((round(im.width * scale), round(im.height * scale)), Image.LANCZOS))
     except Exception:
         try:
             return tk.PhotoImage(file=str(path))
