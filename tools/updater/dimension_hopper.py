@@ -259,10 +259,13 @@ class DeviceSlot(tk.Frame):
         self.payload_lbl.configure(text="Nothing selected - hit Browse.", fg=DIM)
         # Build mode: preselect the last build folder used, else this fork's own build
         if mode == "build":
-            last = self.app.cfg.get("last_build_dir")
+            last = self.app.cfg.get(self._last_build_key())
             start = Path(last) if last and Path(last).exists() else self.fork_build
             if start:
                 self._select_local(start)
+
+    def _last_build_key(self) -> str:
+        return f"last_build_dir_{self.kind}"  # per device: a shared key leaked the robot's build into the controller
 
     def _browse(self):
         if self.src_var.get() == "file":
@@ -282,6 +285,7 @@ class DeviceSlot(tk.Frame):
     BADGES = {
         "BACKUP": ("BACKUP", TEAL), "RELEASE": ("RELEASE", WARN), "IMAGE": ("IMAGE", DIM),
         "BUILD": ("LOCAL BUILD", LIME), "FORK": ("FORK BUILD", LIME), "BAD": ("NOT FLASHABLE", BAD),
+        "WRONG": ("WRONG DEVICE", BAD),
     }
 
     def _set_src_badge(self, key):
@@ -301,6 +305,15 @@ class DeviceSlot(tk.Frame):
             self._set_src_badge("BAD")
             self.payload_lbl.configure(text=str(e), fg=BAD)
             return
+        if plan.kind_hint and plan.kind_hint != self.kind:
+            # A robot image in the controller slot (or vice versa): refuse it right away
+            self.local_path = None
+            self._set_src_badge("WRONG")
+            what = plan.app.short() if plan.app else plan.title
+            self.payload_lbl.configure(text=f"That's {Kind.LABEL[plan.kind_hint]} firmware ({what}), but this is the "
+                                            f"{Kind.LABEL[self.kind]} slot. Pick the {Kind.LABEL[self.kind].lower()}'s "
+                                            "build instead.", fg=BAD)
+            return
         key = plan.source
         # The user may pick either the repo root or its build/ folder
         if key == "BUILD" and self.fork_build and \
@@ -309,7 +322,7 @@ class DeviceSlot(tk.Frame):
             key = "FORK"
         self._set_src_badge(key)
         if plan.source == "BUILD":
-            self.app.cfg["last_build_dir"] = str(path)
+            self.app.cfg[self._last_build_key()] = str(path)
             core.save_config(self.app.cfg)
         app = f"\nContains: {plan.app.short()}" if plan.app else ""
         self.payload_lbl.configure(text=f"Ready: {plan.title}{app}", fg=TEXT)
