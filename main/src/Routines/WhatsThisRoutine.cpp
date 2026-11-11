@@ -21,7 +21,7 @@ Routine::TickingState WhatsThisRoutine::tick(float deltaTime){
 
     if(audio == nullptr || !ServiceLocator::SpeechAudioGenInstance || !ServiceLocator::SpeechGenInstance || com == nullptr || !ServiceLocator::ObjDetInstance){
         CMF_LOG(WhatsThisRoutine, LogLevel::Error, "Missing required service(s)");
-        abort();
+        return TickingState::Done; // Fail soft: skip the routine instead of rebooting the robot
     }
 
     ServiceLocator::ObjDetInstance->loadModel();

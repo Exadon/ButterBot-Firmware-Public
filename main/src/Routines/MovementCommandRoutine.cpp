@@ -27,7 +27,7 @@ Routine::TickingState MovementCommandRoutine::tick(float deltaTime){
 
 		if(baseboard == nullptr || motion == nullptr){
 			ESP_LOGE("MovementCommandRoutine", "Missing required service(s)");
-			abort();
+			return TickingState::Done; // Fail soft: skip the routine instead of rebooting the robot
 		}
 
 		if(baseboard->getChargingState() != ChargingState::Unplugged){
@@ -69,7 +69,7 @@ Routine::TickingState MovementCommandRoutine::tick(float deltaTime){
 
 		if(audio == nullptr || !ServiceLocator::SpeechAudioGenInstance || !ServiceLocator::SpeechGenInstance || com == nullptr || baseboard == nullptr || motion == nullptr){
 			ESP_LOGE("MovementCommandRoutine", "Missing required service(s)");
-			abort();
+			return TickingState::Done; // Fail soft: skip the routine instead of rebooting the robot
 		}
 
 		const MovementCommand command = getMovementCommand();

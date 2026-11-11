@@ -63,6 +63,7 @@
 #include "Services/GasConfigureService.h"
 #include "FaceDet.h"
 #include "Util/ServiceLocator.h"
+#include "Audio/SoundEffects.h"
 
 DEFINE_LOG(Butterbot)
 
@@ -168,7 +169,7 @@ protected:
 		I2S* i2s_out = registerPeriphery<I2S>(I2S_NUM_1, HardwareConfiguration::getAudioI2SConfig());
 
 		Audio* audio = registerService<Audio>(i2s_out, OutputPin{tcaOutput, EXP_SD_MODE_PIN}, /*internalStack=*/true);
-		audio->setGain(0.8f);
+		audio->setGain(DefaultGain);
 
 		ServiceLocator::SpeechGenInstance = std::make_unique<SpeechGen>();
 		ServiceLocator::SpeechAudioGenInstance = std::make_unique<SpeechAudioGen>();
@@ -335,38 +336,17 @@ protected:
 private:
 	static constexpr uint64_t ShutdownButtonPressTime = 3000;
 	static constexpr uint32_t ForcePowerOffTime = 10000;
-	bool pressed;
-	uint64_t lastPress;
+	// Were uninitialized: a garbage 'true' could make tick() shut the robot down right after boot.
+	bool pressed = false;
+	uint64_t lastPress = 0;
+	// Startup used 0.8 but unmute restored 1.0, so the volume jumped after every mute/unmute.
+	static constexpr float DefaultGain = 0.8f;
 	StrongObjectPtr<Timer> forceOffTimer;
 	inline static bool muted = false;
 
 	static constexpr Phrase ActivityModePhrases[] = { Phrase::SettingsActivityOff, Phrase::SettingsActivityChill, Phrase::SettingsActivityActive, Phrase::SettingsActivityHyper };
 	static constexpr Phrase FrontSensorModePhrases[] = { Phrase::SettingsFrontSensorOff, Phrase::SettingsFrontSensorOn };
 	static constexpr Phrase BottomSensorModePhrases[] = { Phrase::SettingsBottomSensorOff, Phrase::SettingsBottomSensorReduced, Phrase::SettingsBottomSensorOn };
-
-	static constexpr const char* UnmuteSounds[] = {
-		"/spiffs/listen/lasers1/phaseJump1.aac",
-		"/spiffs/listen/lasers1/phaseJump2.aac",
-		"/spiffs/listen/lasers1/phaseJump3.aac",
-		"/spiffs/listen/lasers1/phaseJump4.aac",
-		"/spiffs/listen/lasers1/phaseJump5.aac",
-		"/spiffs/listen/lasers1/phaserDown1.aac",
-		"/spiffs/listen/lasers1/phaserDown2.aac",
-		"/spiffs/listen/lasers1/phaserDown3.aac",
-		"/spiffs/listen/lasers2/laser1.aac",
-		"/spiffs/listen/lasers2/laser2.aac",
-		"/spiffs/listen/lasers2/laser3.aac",
-		"/spiffs/listen/lasers2/laser4.aac",
-		"/spiffs/listen/lasers2/laser5.aac",
-		"/spiffs/listen/lasers2/laser6.aac",
-		"/spiffs/listen/lasers2/laser7.aac",
-		"/spiffs/listen/lasers2/laser8.aac",
-		"/spiffs/listen/lasers2/laser9.aac",
-		"/spiffs/listen/robot/robot_1.aac",
-		"/spiffs/listen/robot/robot_2.aac",
-		"/spiffs/listen/robot/robot_3.aac",
-		"/spiffs/listen/robot/robot_4.aac",
-	};
 
 private:
 	static void speakAndWait(Audio* audio, Phrase phrase) {
@@ -501,7 +481,7 @@ private:
 	void toggleMute(){
 		if(Audio* audio = getService<Audio>()){
 			muted = !muted;
-			audio->setGain(muted ? 0.f : 1.f);
+			audio->setGain(muted ? 0.f : DefaultGain);
 			sendMuteStatus();
 
 			if(!muted){
@@ -517,7 +497,7 @@ private:
 			return;
 		}
 
-		const char* path = UnmuteSounds[rand() % std::size(UnmuteSounds)];
+		const char* path = SoundEffects::Random[rand() % std::size(SoundEffects::Random)];
 		audio->play(aacGen, std::make_unique<FileAudioSource>(path));
 	}
 
@@ -558,19 +538,20 @@ private:
 			return;
 		}
 
-		// Compare Battery's cached charge state against a live register read to catch a stale cache
+		// Decide on a live register read: Battery's cached charge state can be stale and would
+		// otherwise shut down a robot that was just plugged in. (A failed read reports Unplugged,
+		// so an I2C error still errs on the side of protecting the battery.)
 		if(BaseBoard* baseBoard = getService<BaseBoard>()){
-			printf("[DBG][%llu] Critical battery: live BaseBoard charge state %d\n", millis(), (int)baseBoard->getChargingState());
-		}
-
-		if(const Battery* battery = getService<Battery>()){
-			printf("[DBG][%llu] Critical battery: cached Battery charge state %d\n", millis(), (int)battery->getChargingState());
+			if(baseBoard->getChargingState() != ChargingState::Unplugged){
+				return;
+			}
+		}else if(const Battery* battery = getService<Battery>()){
 			if(battery->getChargingState() != ChargingState::Unplugged){
 				return;
 			}
 		}
 
-		printf("[DBG][%llu] Critical battery while unplugged, shutting down\n", millis());
+		CMF_LOG(Butterbot, LogLevel::Warning, "Critical battery while unplugged, shutting down");
 		ShutdownService::Shutdown(ShutdownReason::Battery);
 	}
 

@@ -20,7 +20,7 @@ Routine::TickingState PIRModuleOnRoutine::tick(float deltaTime){
 	const Application* app = ApplicationStatics::getApplication();
 	if(app == nullptr){
 		ESP_LOGE(TAG, "Application instance is nullptr");
-		abort();
+		return TickingState::Done; // Fail soft: skip the routine instead of rebooting the robot
 	}
 
 	Audio* audio = app->getService<Audio>();
@@ -30,7 +30,7 @@ Routine::TickingState PIRModuleOnRoutine::tick(float deltaTime){
 
 	if(audio == nullptr || !ServiceLocator::SpeechAudioGenInstance || !ServiceLocator::SpeechGenInstance || com == nullptr || modules == nullptr){
 		ESP_LOGE(TAG, "Missing required service(s)");
-		abort();
+		return TickingState::Done; // Fail soft: skip the routine instead of rebooting the robot
 	}
 
 	const bool moduleInserted = modules->getInserted() == Modules::Type::RM_Motion;

@@ -20,7 +20,7 @@ Routine::TickingState ProfanityRoutine::tick(float deltaTime){
 
     if(audio == nullptr || !ServiceLocator::SpeechAudioGenInstance || !ServiceLocator::SpeechGenInstance || com == nullptr){
         CMF_LOG(ProfanityRoutine, LogLevel::Error, "Missing required service(s)");
-        abort();
+        return TickingState::Done; // Fail soft: skip the routine instead of rebooting the robot
     }
 
     const int16_t id = Phrases::get(Phrase::Profanity);
