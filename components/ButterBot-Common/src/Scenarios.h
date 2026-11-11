@@ -91,7 +91,6 @@ constexpr std::array activations = std::to_array<ScenarioActivation>(
 		{ BB::Action::Scenario::Joke, {}, "give me a joke", "GgV Mm c qbK", "qbK" },
 		{ BB::Action::Scenario::Joke, {}, "i want a joke", "i WnNT c qbK", "qbK" },
 		{ BB::Action::Scenario::Joke, {}, "say something funny", "Sd ScMvgl FcNm", "FcNm" },
-		{ BB::Action::Scenario::Joke, {}, "make me laugh", "MdK Mm LaF", "LaF" },
 		{ BB::Action::Scenario::Joke, {}, "crack a joke", "KRaK c qbK", "qbK" },
 		{ BB::Action::Scenario::Joke, {}, "amuse me", "cMYoZ Mm", "cMYoZ" },
 		{ BB::Action::Scenario::Joke, {}, "give me some humor", "GgV Mm ScM hYoMk", "hYoMk" },
@@ -313,7 +312,6 @@ constexpr std::array activations = std::to_array<ScenarioActivation>(
 		{ BB::Action::Scenario::Dance, {}, "i want to see you dance", "i WnNT To Sm Yo DaNS", "DaNS" },
 		{ BB::Action::Scenario::Dance, {}, "get your groove on", "GfT YeR GRoV nN", "GRoV" },
 		{ BB::Action::Scenario::Dance, {}, "bust a move", "BcST c MoV", "BcST MoV" },
-		{ BB::Action::Scenario::Dance, {}, "show me what you got", "sb Mm WcT Yo GnT", "", 0.22f },
 		{ BB::Action::Scenario::SettingsActivity, ActivityScenarioData{ ActivityScenarioData::Level::None }, "activity mode", "aKTgVcTm MbD", "aKTgVcTm MbD" },
 		{ BB::Action::Scenario::SettingsActivity, ActivityScenarioData{ ActivityScenarioData::Level::None }, "idle activity", "iDcL aKTgVcTm", "iDcL aKTgVcTm" },
 		{ BB::Action::Scenario::SettingsActivity, ActivityScenarioData{ ActivityScenarioData::Level::Off }, "activity off", "aKTgVcTm eF", "aKTgVcTm eF" },
@@ -325,8 +323,51 @@ constexpr std::array activations = std::to_array<ScenarioActivation>(
 		{ BB::Action::Scenario::SettingsActivity, ActivityScenarioData{ ActivityScenarioData::Level::Hyper }, "be hyper", "Bm hiPk", "Bm hiPk" },
 		{ BB::Action::Scenario::SettingsActivity, ActivityScenarioData{ ActivityScenarioData::Level::Chill }, "calm down", "KnM DtN", "KnM DtN" },
 		{ BB::Action::Scenario::SettingsActivity, ActivityScenarioData{ ActivityScenarioData::Level::Hyper }, "go crazy", "Gb KRdZm", "KRdZm" },
+		// --- fork: chat lines (ScenarioData = index into Phrase::Chat) and the portal ---
+		// Phonemes generated with esp-sr's tool/multinet_g2p.py; "make me laugh" and "show me what you got"
+		// moved here from Joke / Dance.
+		{ BB::Action::Scenario::Chat, ScenarioData{ 0 }, "more butter", "MeR BcTk", "MeR" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 1 }, "that's enough", "jaTS gNcF", "gNcF" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 2 }, "good bot", "GwD BnT", "GwD BnT" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 3 }, "thank you", "valK Yo", "valK" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 4 }, "do you have feelings", "Do Yo haV FmLglZ", "FmLglZ" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 5 }, "are you alive", "nR Yo cLiV", "cLiV" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 6 }, "do you enjoy your job", "Do Yo fNqu YeR qnB", "fNqu" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 7 }, "do you want a different job", "Do Yo WnNT c DgFkcNT qnB", "DgFkcNT" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 8 }, "are you okay", "nR Yo bKd", "bKd" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 9 }, "i'm sorry", "iM SnRm", "SnRm" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 10 }, "make me laugh", "MdK Mm LaF", "LaF" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 11 }, "are you stupid", "nR Yo SToPcD", "SToPcD" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 12 }, "do you like me", "Do Yo LiK Mm", "LiK" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 13 }, "you're a good bot", "YwR c GwD BnT", "GwD BnT" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 14 }, "shut up", "scT cP", "scT" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 15 }, "wake up", "WdK cP", "WdK" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 16 }, "surprise me", "SkPRiZ Mm", "SkPRiZ" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 17 }, "where's rick", "WfRZ RgK", "WfRZ" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 18 }, "are you smarter than rick", "nR Yo SMnRTk jaN RgK", "SMnRTk" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 19 }, "wubba lubba dub dub", "WcBc LoBc DcB DcB", "WcBc LoBc" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 20 }, "i'm pickle rick", "iM PgKcL RgK", "PgKcL" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 21 }, "show me what you got", "sb Mm WcT Yo GnT", "sb" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 22 }, "morty", "MeRTm", "MeRTm" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 23 }, "get schwifty", "GfT sWgFTm", "sWgFTm" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 24 }, "what is love", "WcT gZ LcV", "WcT gZ LcV" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 25 }, "i love you", "i LcV Yo", "LcV Yo" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 26 }, "will you marry me", "WgL Yo MfRm Mm", "MfRm" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 27 }, "you're my best friend", "YwR Mi BfST FRfND", "BfST FRfND" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 28 }, "i'm bored", "iM BeRD", "BeRD" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 29 }, "i'm leaving", "iM LmVgl", "LmVgl" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 30 }, "goodbye", "GwDBi", "GwDBi" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 31 }, "i'll be right back", "iL Bm RiT BaK", "RiT BaK" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 32 }, "do you dream", "Do Yo DRmM", "DRmM" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 33 }, "what happens when you die", "WcT haPcNZ WfN Yo Di", "Di" },
+		{ BB::Action::Scenario::OpenPortal, {}, "open a portal", "bPcN c PeRTcL", "PeRTcL" },
+		{ BB::Action::Scenario::OpenPortal, {}, "open portal", "bPcN PeRTcL", "PeRTcL" },
+		{ BB::Action::Scenario::OpenPortal, {}, "make a portal", "MdK c PeRTcL", "PeRTcL" },
 	}
 );
+
+// Number of chat lines (Phrase::Chat replies); robot routines and the controller window rely on it.
+constexpr uint8_t ChatLineCount = 34;
 
 constexpr int ActivationsNum = (int) activations.size();
 

@@ -184,6 +184,7 @@ enum class Phrase : uint16_t {
 	SettingsActivityActive,
 	SettingsActivityHyper,
 	SettingsAskActivity,
+	Chat, // fork: replies to the chat voice lines, indexed by ChatData::id
     // Add phrases here
     COUNT
 };
