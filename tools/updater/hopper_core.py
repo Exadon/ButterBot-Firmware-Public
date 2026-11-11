@@ -22,6 +22,7 @@ import re
 import sys
 import threading
 import time
+import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -40,12 +41,42 @@ CACHE_DIR = APP_DIR / "cache"
 BACKUP_DIR = APP_DIR / "backups"
 CONFIG_PATH = APP_DIR / "config.json"
 
+# Built-in choices for the "Latest GitHub release" dropdown: the stock firmware and this fork.
+# More can be added at runtime (Repos… dialog); those live in config["custom_repos"].
+PRESET_REPOS = {
+    "bot": ["CircuitMess/ButterBot-Firmware-Public", "Exadon/ButterBot-Firmware-Public"],
+    "ctrl": ["CircuitMess/ButterBotCtrl-Firmware-Public"],
+}
+STOCK_OWNER = "CircuitMess"
+
 DEFAULT_CONFIG = {
     "bot_repo": "CircuitMess/ButterBot-Firmware-Public",
     "ctrl_repo": "CircuitMess/ButterBotCtrl-Firmware-Public",
+    "custom_repos": {"bot": [], "ctrl": []},
     "backup_first": True,
     "baud": 921600,
 }
+
+REPO_RE = re.compile(r"[\w.-]+/[\w.-]+")
+
+
+def normalize_repo(text: str) -> str:
+    """Accepts 'owner/name' or a github.com URL; returns 'owner/name' or raises ValueError."""
+    t = text.strip().removesuffix(".git").strip("/")
+    t = re.sub(r"^(https?://)?(www\.)?github\.com/", "", t, flags=re.I)
+    t = "/".join(t.split("/")[:2])
+    if not REPO_RE.fullmatch(t):
+        raise ValueError(f"'{text.strip()}' isn't an owner/repo name or GitHub URL")
+    return t
+
+
+def repo_choices(cfg: dict, kind: str) -> list[str]:
+    seen, out = set(), []
+    for r in PRESET_REPOS[kind] + list(cfg.get("custom_repos", {}).get(kind, [])):
+        if r.lower() not in seen:
+            seen.add(r.lower())
+            out.append(r)
+    return out
 
 
 # ---------------------------------------------------------------------------------------------
@@ -299,10 +330,17 @@ def _http_json(url: str):
 
 
 def latest_release(repo: str) -> Release:
-    repo = repo.strip().strip("/")
-    if not re.fullmatch(r"[\w.-]+/[\w.-]+", repo):
-        raise ValueError(f"'{repo}' isn't an owner/repo name")
-    data = _http_json(f"https://api.github.com/repos/{repo}/releases/latest")
+    repo = normalize_repo(repo)
+    try:
+        data = _http_json(f"https://api.github.com/repos/{repo}/releases/latest")
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            # Same 404 for "no such repo" and "repo has no releases yet"
+            raise ValueError(f"{repo} has no releases yet (or doesn't exist). "
+                             "Push a v* tag to publish one, or use the build-folder option.") from None
+        if e.code == 403:
+            raise ValueError("GitHub rate limit hit - try again in a few minutes") from None
+        raise
     bins = [a for a in data.get("assets", []) if a["name"].lower().endswith(".bin")]
     if not bins:
         raise ValueError(f"{repo} {data.get('tag_name', '?')} has no .bin asset")
@@ -374,11 +412,15 @@ def write(port: str, plan: FlashPlan, baud: int, on_line, on_progress):
 # ---------------------------------------------------------------------------------------------
 
 def load_config() -> dict:
-    cfg = dict(DEFAULT_CONFIG)
+    cfg = json.loads(json.dumps(DEFAULT_CONFIG))  # deep copy
     try:
         cfg.update(json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
     except (OSError, ValueError):
         pass
+    cr = cfg.get("custom_repos")
+    if not isinstance(cr, dict):
+        cr = {}
+    cfg["custom_repos"] = {k: [r for r in cr.get(k, []) if isinstance(r, str)] for k in ("bot", "ctrl")}
     return cfg
 
 

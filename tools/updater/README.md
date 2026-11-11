@@ -9,7 +9,7 @@ A one-window firmware updater for **ButterBot** and its **controller**, with a m
 - **Finds the boards.** *Scan dimensions* probes every USB serial port (the robot shows up as a CH340, Bluetooth ports are skipped). Both boards are ESP32-S3, so the probe tells them apart by flash size: 16 MB is the robot, 4 MB is the controller. Each board is dropped into the right slot automatically.
 - **Keeps the robot awake.** The robot's USB chip runs off the robot's own power, and its firmware switches the robot off if it boots without the power button held. So after a probe or backup the chip stays parked in bootloader mode instead of rebooting. Turn the robot on (hold power ~2 s) *before* scanning.
 - **Picks a payload per board:**
-  - *Latest GitHub release*: the stock CircuitMess repos by default. Type your fork's `owner/repo` to ship your own releases. Downloads are cached.
+  - *Latest GitHub release*: pick from a dropdown with the stock CircuitMess repo and this fork (`Exadon/ButterBot-Firmware-Public`). A **STOCK** / **FORK** badge shows which you're about to flash, and the confirmation dialog spells it out too. Add other repos under **Repos…** (`owner/name` or a GitHub URL); they're saved and appear in the dropdown. Downloads are cached.
   - *Local .bin / backup*: any merged full-flash image written at `0x0`, including a backup this tool made.
   - *idf.py build folder*: point it at a project's `build/` folder and it flashes every part listed in `flasher_args.json` (bootloader, partition table, app, SPIFFS, models). This is the dev loop for the fork.
 - **Refuses foot-guns.** It checks the ESP image magic, won't put a robot image (>4 MB) on the controller or the other way round, and won't write past the end of the chip's flash.

@@ -183,13 +183,16 @@ class DeviceSlot(tk.Frame):
         self.repo_lbl = tk.Label(self.repo_row, text="Repo", bg=PANEL, fg=DIM, width=7, anchor="w")
         self.repo_lbl.pack(side="left")
         self.repo_var = tk.StringVar(value=app.cfg["bot_repo" if kind == Kind.BOT else "ctrl_repo"])
-        e = self.repo_entry = tk.Entry(self.repo_row, textvariable=self.repo_var, bg=PANEL_HI, fg=TEXT,
-                                       insertbackground=GREEN, relief="flat", highlightthickness=1,
-                                       highlightbackground=EDGE, highlightcolor=GREEN)
-        e.pack(side="left", fill="x", expand=True, ipady=3)
-        e.bind("<Return>", lambda ev: self.refresh_release())
-        e.bind("<FocusOut>", lambda ev: self.refresh_release(only_if_changed=True))
+        # A dropdown, not free text: stock + fork presets, plus whatever was added under "Repos…".
+        # The badge next to it makes "am I flashing stock or my fork?" impossible to miss.
+        self.repo_box = ttk.Combobox(self.repo_row, textvariable=self.repo_var, state="readonly",
+                                     style="Hop.TCombobox")
+        self.repo_box.bind("<<ComboboxSelected>>", lambda ev: self.refresh_release())
+        self.repo_badge = tk.Label(self.repo_row, text="", bg=PANEL, font=("Segoe UI Black", 8), padx=6)
+        self.repos_btn = app.button(self.repo_row, "Repos…", app.open_repo_dialog, small=True)
         self.browse_btn = app.button(self.repo_row, "Browse…", self._browse, small=True)
+        self._pack_release_widgets()
+        self.reload_repo_choices()
 
         self.payload_lbl = tk.Label(self, text="", bg=PANEL, fg=TEXT, anchor="w", justify="left",
                                     wraplength=380, font=("Segoe UI", 9))
@@ -210,12 +213,12 @@ class DeviceSlot(tk.Frame):
     # --- source handling ------------------------------------------------------------------
     def _source_changed(self):
         mode = self.src_var.get()
-        for w in (self.repo_lbl, self.repo_entry, self.browse_btn):
+        for w in (self.repo_lbl, self.repo_box, self.repo_badge, self.repos_btn, self.browse_btn):
             w.pack_forget()
         self.repo_lbl.pack(side="left")
         if mode == "release":
             self.repo_lbl.configure(text="Repo")
-            self.repo_entry.pack(side="left", fill="x", expand=True, ipady=3)
+            self._pack_release_widgets()
             self.refresh_release()
         else:
             self.repo_lbl.configure(text="File" if mode == "file" else "Folder")
@@ -246,7 +249,36 @@ class DeviceSlot(tk.Frame):
             return core.classify_full_image(self.local_path)
         return core.plan_from_build_dir(self.local_path)
 
+    def _pack_release_widgets(self):
+        self.repo_box.pack(side="left", fill="x", expand=True)
+        self.repo_badge.pack(side="left", padx=(6, 0))
+        self.repos_btn.pack(side="left", padx=(6, 0))
+
+    def _is_stock(self) -> bool:
+        return self.repo_var.get().split("/")[0].lower() == core.STOCK_OWNER.lower()
+
+    def reload_repo_choices(self):
+        choices = core.repo_choices(self.app.cfg, self.kind)
+        self.repo_box.configure(values=choices)
+        if self.repo_var.get() not in choices:
+            self.repo_var.set(choices[0])
+        self._update_badge()
+
+    def _update_badge(self):
+        stock = self._is_stock()
+        self.repo_badge.configure(text="STOCK" if stock else "FORK", fg=BG, bg=WARN if stock else LIME)
+
+    def payload_summary(self) -> str:
+        mode = self.src_var.get()
+        if mode == "release":
+            tag = self.release.tag if self.release else "latest release"
+            return f"{self.repo_var.get()} {tag} ({'STOCK firmware' if self._is_stock() else 'fork'})"
+        if self.local_path:
+            return f"{'build folder' if mode == 'build' else 'file'} {self.local_path}"
+        return "nothing selected"
+
     def refresh_release(self, only_if_changed=False):
+        self._update_badge()
         repo = self.repo_var.get().strip()
         if only_if_changed and repo == self._last_repo and self.release:
             return
@@ -523,8 +555,9 @@ class App:
         if len({s.port() for s in chosen}) != len(chosen):
             messagebox.showerror(APP_TITLE, "Both slots point at the same port. That's how you get paradoxes.")
             return
-        names = ", ".join(f"{Kind.LABEL[s.kind]} on {s.port()}" for s in chosen)
-        if not messagebox.askokcancel(APP_TITLE, f"Flash {names}?\n\nDon't unplug anything until the portal calms down."):
+        names = "\n".join(f"• {Kind.LABEL[s.kind]} on {s.port()}:  {s.payload_summary()}" for s in chosen)
+        if not messagebox.askokcancel(APP_TITLE, f"About to flash:\n\n{names}\n\n"
+                                                 "Don't unplug anything until the portal calms down."):
             return
         backup_first = bool(self.backup_var.get())
 
@@ -600,6 +633,92 @@ class App:
             status(f"✖ {e}", BAD)
             self.tlog(f"[{name}] {e}", "bad")
             return False
+
+    # --- repo options ---------------------------------------------------------------------
+    def open_repo_dialog(self):
+        if getattr(self, "_repo_dlg", None) and self._repo_dlg.winfo_exists():
+            self._repo_dlg.lift()
+            return
+        dlg = self._repo_dlg = tk.Toplevel(self.root, bg=BG)
+        dlg.title("Release repositories")
+        dlg.transient(self.root)
+        dlg.resizable(False, False)
+        tk.Label(dlg, text="RELEASE REPOSITORIES", bg=BG, fg=GREEN, font=("Segoe UI Black", 14)).pack(
+            anchor="w", padx=16, pady=(14, 0))
+        tk.Label(dlg, text="Built-in repos are always in the dropdown. Add any other GitHub repo that publishes "
+                           "firmware .bin releases (owner/name or a github.com URL).",
+                 bg=BG, fg=DIM, wraplength=560, justify="left", font=("Segoe UI", 9)).pack(anchor="w", padx=16, pady=(2, 8))
+
+        def section(kind: str):
+            box = tk.Frame(dlg, bg=PANEL, highlightbackground=EDGE, highlightthickness=1)
+            box.pack(fill="x", padx=16, pady=6)
+            tk.Label(box, text=Kind.LABEL[kind].upper(), bg=PANEL, fg=LIME, font=("Segoe UI Black", 11)).pack(
+                anchor="w", padx=10, pady=(8, 2))
+            lb = tk.Listbox(box, height=5, bg="#040705", fg=TEXT, selectbackground="#1f5a2c", relief="flat",
+                            highlightthickness=1, highlightbackground=EDGE, font=("Segoe UI", 9), activestyle="none")
+            lb.pack(fill="x", padx=10)
+            presets = core.PRESET_REPOS[kind]
+
+            def refill():
+                lb.delete(0, "end")
+                for r in presets:
+                    lb.insert("end", f"{r}   (built-in)")
+                    lb.itemconfigure("end", fg=DIM)
+                for r in self.cfg["custom_repos"][kind]:
+                    lb.insert("end", r)
+
+            row = tk.Frame(box, bg=PANEL)
+            row.pack(fill="x", padx=10, pady=8)
+            var = tk.StringVar()
+            ent = tk.Entry(row, textvariable=var, bg=PANEL_HI, fg=TEXT, insertbackground=GREEN, relief="flat",
+                           highlightthickness=1, highlightbackground=EDGE, highlightcolor=GREEN, width=44)
+            ent.pack(side="left", fill="x", expand=True, ipady=3)
+            msg = tk.Label(box, text="", bg=PANEL, fg=DIM, anchor="w", font=("Segoe UI", 8))
+
+            def add():
+                try:
+                    repo = core.normalize_repo(var.get())
+                except ValueError as e:
+                    msg.configure(text=str(e), fg=BAD)
+                    return
+                if repo.lower() in (r.lower() for r in core.repo_choices(self.cfg, kind)):
+                    msg.configure(text=f"{repo} is already in the list.", fg=WARN)
+                    return
+                self.cfg["custom_repos"][kind].append(repo)
+                core.save_config(self.cfg)
+                var.set("")
+                msg.configure(text=f"Added {repo} - pick it from the {Kind.LABEL[kind]} dropdown.", fg=GREEN)
+                refill()
+                self.slots[kind].reload_repo_choices()
+
+            def remove():
+                sel = lb.curselection()
+                if not sel:
+                    return
+                i = sel[0] - len(presets)
+                if i < 0:
+                    msg.configure(text="Built-in repos can't be removed.", fg=WARN)
+                    return
+                repo = self.cfg["custom_repos"][kind].pop(i)
+                core.save_config(self.cfg)
+                msg.configure(text=f"Removed {repo}.", fg=DIM)
+                refill()
+                slot = self.slots[kind]
+                was = slot.repo_var.get()
+                slot.reload_repo_choices()
+                if was != slot.repo_var.get() and slot.src_var.get() == "release":
+                    slot.refresh_release()
+
+            ent.bind("<Return>", lambda e: add())
+            self.button(row, "Add", add, small=True).pack(side="left", padx=(6, 0))
+            self.button(row, "Remove selected", remove, small=True).pack(side="left", padx=(6, 0))
+            msg.pack(fill="x", padx=10, pady=(0, 8))
+            refill()
+
+        section(Kind.BOT)
+        section(Kind.CTRL)
+        self.button(dlg, "Done", dlg.destroy).pack(anchor="e", padx=16, pady=(6, 14))
+        dlg.grab_set()
 
     def _close(self):
         if self.busy and not messagebox.askyesno(APP_TITLE, "A flash is in progress. Quitting now can leave the "
