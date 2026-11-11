@@ -1,5 +1,21 @@
 # ButterBot Firmware
 
+> **This is a community fork** of [CircuitMess/ButterBot-Firmware-Public](https://github.com/CircuitMess/ButterBot-Firmware-Public).
+> It is compatible with the stock controller firmware.
+
+## What's different in this fork
+
+- **Sturdier at runtime:** an I2C glitch on the motor board link is logged instead of rebooting the robot, and routines skip themselves instead of crashing when a service is missing.
+- **Settings survive firmware updates.** They used to reset to defaults whenever the settings layout changed.
+- **Bug fixes:** an uninitialized power-button state, volume jumping after mute/unmute, skewed odds for random idle behaviours, and a few smaller issues in listening mode.
+- **[Dimension Hopper](tools/updater):** a one-click Windows updater for the robot *and* the controller. It flashes GitHub releases, local images or `idf.py` build folders, with automatic backups and wrong-board protection.
+
+## Installing a release
+
+Every `v*` tag builds a single merged image on GitHub Actions and attaches it to the
+[releases page](../../releases). The easiest way to install it is Dimension Hopper: choose
+*Latest GitHub release* and enter this repository's `owner/name`.
+
 ## Building
 
 To build the ButterBot firmware, you'll need the ESP-IDF. You can find the getting started
