@@ -9,6 +9,7 @@ A mad-science themed front end for esptool:
 from __future__ import annotations
 
 import math
+import os
 import queue
 import random
 import sys
@@ -60,6 +61,22 @@ QUIPS = {
 
 def quip(kind: str) -> str:
     return random.choice(QUIPS[kind])
+
+
+def load_art(name: str, size: int):
+    """Loads a bundled PNG (works from source and inside the PyInstaller exe), resized to size px."""
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).parent))
+    path = base / name
+    if not path.exists():
+        return None
+    try:
+        from PIL import Image, ImageTk
+        return ImageTk.PhotoImage(Image.open(path).resize((size, size), Image.LANCZOS))
+    except Exception:
+        try:
+            return tk.PhotoImage(file=str(path))
+        except tk.TclError:
+            return None
 
 
 # =============================================================================================
@@ -145,11 +162,16 @@ class DeviceSlot(tk.Frame):
 
         pad = dict(padx=14)
         head = tk.Frame(self, bg=PANEL)
-        head.pack(fill="x", pady=(12, 4), **pad)
-        tk.Label(head, text=Kind.LABEL[kind].upper(), bg=PANEL, fg=GREEN,
-                 font=("Segoe UI Black", 15)).pack(side="left")
-        tk.Label(head, text="16 MB · robot" if kind == Kind.BOT else "4 MB · handheld", bg=PANEL, fg=DIM,
-                 font=("Segoe UI", 9)).pack(side="left", padx=8, pady=(5, 0))
+        head.pack(fill="x", pady=(10, 4), **pad)
+        self.icon_img = load_art("bot.png" if kind == Kind.BOT else "controller.png", 84)
+        if self.icon_img is not None:
+            tk.Label(head, image=self.icon_img, bg=PANEL).pack(side="left", padx=(0, 10))
+        names = tk.Frame(head, bg=PANEL)
+        names.pack(side="left", anchor="center")
+        tk.Label(names, text=Kind.LABEL[kind].upper(), bg=PANEL, fg=GREEN,
+                 font=("Segoe UI Black", 15)).pack(anchor="w")
+        tk.Label(names, text="16 MB · robot" if kind == Kind.BOT else "4 MB · handheld", bg=PANEL, fg=DIM,
+                 font=("Segoe UI", 9)).pack(anchor="w")
 
         # port row
         row = tk.Frame(self, bg=PANEL)
@@ -191,6 +213,9 @@ class DeviceSlot(tk.Frame):
         self.repo_badge = tk.Label(self.repo_row, text="", bg=PANEL, font=("Segoe UI Black", 8), padx=6)
         self.repos_btn = app.button(self.repo_row, "Repos…", app.open_repo_dialog, small=True)
         self.browse_btn = app.button(self.repo_row, "Browse…", self._browse, small=True)
+        self.fork_build = core.find_fork_build() if kind == Kind.BOT else None
+        self.fork_btn = app.button(self.repo_row, "Use this fork's build", self._use_fork_build, small=True)
+        self.src_badge = tk.Label(self.repo_row, text="", bg=PANEL, font=("Segoe UI Black", 8), padx=6)
         self._pack_release_widgets()
         self.reload_repo_choices()
 
@@ -213,18 +238,29 @@ class DeviceSlot(tk.Frame):
     # --- source handling ------------------------------------------------------------------
     def _source_changed(self):
         mode = self.src_var.get()
-        for w in (self.repo_lbl, self.repo_box, self.repo_badge, self.repos_btn, self.browse_btn):
+        for w in (self.repo_lbl, self.repo_box, self.repo_badge, self.repos_btn, self.browse_btn,
+                  self.fork_btn, self.src_badge):
             w.pack_forget()
         self.repo_lbl.pack(side="left")
         if mode == "release":
             self.repo_lbl.configure(text="Repo")
             self._pack_release_widgets()
             self.refresh_release()
-        else:
-            self.repo_lbl.configure(text="File" if mode == "file" else "Folder")
-            self.browse_btn.pack(side="left")
-            self.local_path = None
-            self.payload_lbl.configure(text="Nothing selected - hit Browse.", fg=DIM)
+            return
+        self.repo_lbl.configure(text="File" if mode == "file" else "Folder")
+        self.browse_btn.pack(side="left")
+        if mode == "build" and self.fork_build:
+            self.fork_btn.pack(side="left", padx=(6, 0))
+        self.src_badge.pack(side="left", padx=(6, 0))
+        self.local_path = None
+        self._set_src_badge(None)
+        self.payload_lbl.configure(text="Nothing selected - hit Browse.", fg=DIM)
+        # Build mode: preselect the last build folder used, else this fork's own build
+        if mode == "build":
+            last = self.app.cfg.get("last_build_dir")
+            start = Path(last) if last and Path(last).exists() else self.fork_build
+            if start:
+                self._select_local(start)
 
     def _browse(self):
         if self.src_var.get() == "file":
@@ -233,14 +269,48 @@ class DeviceSlot(tk.Frame):
                                            filetypes=[("Firmware image", "*.bin"), ("All files", "*.*")])
         else:
             p = filedialog.askdirectory(title="Project build/ folder (after idf.py build)")
-        if not p:
+        if p:
+            self._select_local(Path(p))
+
+    def _use_fork_build(self):
+        self.fork_build = core.find_fork_build() or self.fork_build
+        if self.fork_build:
+            self._select_local(self.fork_build)
+
+    BADGES = {
+        "BACKUP": ("BACKUP", TEAL), "RELEASE": ("RELEASE", WARN), "IMAGE": ("IMAGE", DIM),
+        "BUILD": ("LOCAL BUILD", LIME), "FORK": ("FORK BUILD", LIME), "BAD": ("NOT FLASHABLE", BAD),
+    }
+
+    def _set_src_badge(self, key):
+        if key is None:
+            self.src_badge.configure(text="", bg=PANEL)
             return
-        self.local_path = Path(p)
+        text, col = self.BADGES[key]
+        self.src_badge.configure(text=text, fg=BG, bg=col)
+
+    def _select_local(self, path: Path):
+        self.local_path = path
         try:
             plan = self.make_local_plan()
-            self.payload_lbl.configure(text=f"Ready: {plan.title}", fg=TEXT)
         except core.ImageError as e:
+            # Never keep a path we refused: BEAM IT must not be able to write it
+            self.local_path = None
+            self._set_src_badge("BAD")
             self.payload_lbl.configure(text=str(e), fg=BAD)
+            return
+        key = plan.source
+        # The user may pick either the repo root or its build/ folder
+        if key == "BUILD" and self.fork_build and \
+                os.path.normcase(os.path.abspath(path)) in {os.path.normcase(str(self.fork_build)),
+                                                           os.path.normcase(str(self.fork_build.parent))}:
+            key = "FORK"
+        self._set_src_badge(key)
+        if plan.source == "BUILD":
+            self.app.cfg["last_build_dir"] = str(path)
+            core.save_config(self.app.cfg)
+        app = f"\nContains: {plan.app.short()}" if plan.app else ""
+        self.payload_lbl.configure(text=f"Ready: {plan.title}{app}", fg=TEXT)
 
     def make_local_plan(self) -> core.FlashPlan:
         if not self.local_path:
@@ -274,7 +344,15 @@ class DeviceSlot(tk.Frame):
             tag = self.release.tag if self.release else "latest release"
             return f"{self.repo_var.get()} {tag} ({'STOCK firmware' if self._is_stock() else 'fork'})"
         if self.local_path:
-            return f"{'build folder' if mode == 'build' else 'file'} {self.local_path}"
+            what = f"{'build folder' if mode == 'build' else 'file'} {self.local_path}"
+            try:
+                plan = self.make_local_plan()
+                what += f"  [{self.src_badge.cget('text') or plan.source}]"
+                if plan.app:
+                    what += f"\n      contains {plan.app.short()}"
+            except core.ImageError:
+                pass
+            return what
         return "nothing selected"
 
     def refresh_release(self, only_if_changed=False):

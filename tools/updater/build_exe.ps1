@@ -5,6 +5,6 @@ Set-Location $PSScriptRoot
 if (-not (Test-Path .venv)) { py -3 -m venv .venv }
 .\.venv\Scripts\python -m pip install -q --disable-pip-version-check -r requirements.txt
 .\.venv\Scripts\pyinstaller --noconfirm --clean --onefile --windowed `
-    --name DimensionHopper --icon portal.ico --add-data "portal.ico;." `
+    --name DimensionHopper --icon portal.ico --add-data "portal.ico;." --add-data "bot.png;." --add-data "controller.png;." `
     --collect-all esptool dimension_hopper.py
 Write-Host "Built: $PSScriptRoot\dist\DimensionHopper.exe"

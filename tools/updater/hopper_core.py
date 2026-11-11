@@ -239,12 +239,53 @@ def probe(port: str, baud: int = 921600, on_line=lambda s: None) -> ProbeResult:
 # ---------------------------------------------------------------------------------------------
 
 @dataclass
+class AppInfo:
+    """The esp_app_desc_t that ESP-IDF embeds in every app image (version, project, build date)."""
+    project: str
+    version: str
+    date: str
+    time: str
+    idf: str
+
+    def short(self) -> str:
+        return f"{self.project} {self.version} · built {self.date}"
+
+
+APP_DESC_MAGIC = 0xABCD5432
+APP_OFFSET = 0x10000          # factory app partition on both boards
+PART_TABLE_OFFSET = 0x8000
+PART_TABLE_MAGIC = b"\xAA\x50"
+
+
+def read_app_info(data: bytes, image_offset: int) -> Optional[AppInfo]:
+    """esp_app_desc_t sits 0x20 bytes into an app image (after the image + first segment headers)."""
+    d = image_offset + 0x20
+    if len(data) < d + 144 or int.from_bytes(data[d:d + 4], "little") != APP_DESC_MAGIC:
+        return None
+
+    def txt(off, n):
+        return data[d + off:d + off + n].split(b"\0")[0].decode("utf-8", "replace")
+    return AppInfo(project=txt(48, 32), version=txt(16, 32), time=txt(80, 16), date=txt(96, 16), idf=txt(112, 32))
+
+
+def kind_from_project(project: str) -> Optional[str]:
+    p = project.lower()
+    if "butterbotctrl" in p or "controller" in p:
+        return Kind.CTRL
+    if "butterbot" in p:
+        return Kind.BOT
+    return None
+
+
+@dataclass
 class FlashPlan:
     """What to write, where. A release/backup is one full image at 0x0; a build has several parts."""
     title: str
     parts: list[tuple[int, Path]]
     kind_hint: Optional[str] = None       # which device this image is for, if we could tell
     extra_write_args: list[str] = field(default_factory=list)
+    app: Optional[AppInfo] = None         # what firmware is inside, if we could read it
+    source: str = ""                      # BACKUP / RELEASE / IMAGE / BUILD - shown as a badge
 
     @property
     def total_bytes(self) -> int:
@@ -255,18 +296,57 @@ class ImageError(ValueError):
     pass
 
 
+def source_of(path: Path) -> str:
+    # Plain absolute paths, not resolve(): Microsoft Store Python transparently redirects
+    # %LOCALAPPDATA% writes into its package folder, and resolve() follows that redirect.
+    p = os.path.normcase(os.path.abspath(path))
+    for root, tag in ((BACKUP_DIR, "BACKUP"), (CACHE_DIR, "RELEASE")):
+        if p.startswith(os.path.normcase(os.path.abspath(root)) + os.sep):
+            return tag
+    return "IMAGE"
+
+
+def backup_date(path: Path) -> str:
+    """Backups are named <Device>-<PORT>-YYYYmmdd-HHMMSS.bin."""
+    m = re.search(r"(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})\d{2}\.bin$", path.name)
+    return f"{m[1]}-{m[2]}-{m[3]} {m[4]}:{m[5]}" if m else ""
+
+
 def classify_full_image(path: Path) -> FlashPlan:
+    """
+    Validates a file meant to be written at 0x0 as a complete flash image. A real one has the
+    bootloader at 0x0, a partition table at 0x8000 and the app at 0x10000. Anything else written
+    at 0x0 bricks the board until it's reflashed (that's how the robot got bricked once: the bare
+    app .bin from a build folder was written at 0x0).
+    """
     size = path.stat().st_size
     if size < 64 * 1024:
         raise ImageError(f"{path.name} is only {size} bytes - that's not a firmware image")
     with open(path, "rb") as f:
-        magic = f.read(1)
-    if magic != b"\xE9":
+        head = f.read(APP_OFFSET + 0x200)
+    if head[:1] != b"\xE9":
         raise ImageError(f"{path.name} doesn't start with an ESP image header (0xE9). "
                          "Pick a merged full-flash .bin (like the GitHub releases) or a build folder.")
-    # Bot images carry ~12 MB of models, so anything over 4 MB can only be a robot image.
-    kind = Kind.BOT if size > 4 * MiB else Kind.CTRL
-    return FlashPlan(f"{path.name} ({size / MiB:.1f} MB)", [(0, path)], kind)
+
+    if app_at_0 := read_app_info(head, 0):
+        raise ImageError(f"{path.name} is only the APP part of a build ({app_at_0.short()}). "
+                         "Writing it at 0x0 would wipe the bootloader and brick the board. "
+                         "Use 'idf.py build folder' and pick the build/ folder instead."
+                         + ("  (This looks like a backup of an already-broken board - don't restore it.)"
+                            if source_of(path) == "BACKUP" else ""))
+    if head[PART_TABLE_OFFSET:PART_TABLE_OFFSET + 2] != PART_TABLE_MAGIC:
+        raise ImageError(f"{path.name} has no partition table at 0x8000, so it isn't a complete flash image "
+                         "(maybe a bootloader or data partition on its own). Writing it at 0x0 would brick the board.")
+    app = read_app_info(head, APP_OFFSET)
+    if app is None:
+        raise ImageError(f"{path.name} has a partition table but no valid app at 0x10000 - not bootable.")
+
+    # Prefer the project name baked into the app; fall back to size (bot images carry ~12 MB of models).
+    kind = kind_from_project(app.project) or (Kind.BOT if size > 4 * MiB else Kind.CTRL)
+    src = source_of(path)
+    when = backup_date(path) if src == "BACKUP" else ""
+    title = f"{path.name} ({size / MiB:.1f} MB)" + (f" · backup from {when}" if when else "")
+    return FlashPlan(title, [(0, path)], kind, app=app, source=src)
 
 
 def plan_from_build_dir(build_dir: Path) -> FlashPlan:
@@ -307,7 +387,32 @@ def plan_from_build_dir(build_dir: Path) -> FlashPlan:
             name = json.loads(desc.read_text(encoding="utf-8")).get("project_name", name)
         except ValueError:
             pass
-    return FlashPlan(f"local build '{name}' ({len(parts)} parts)", parts, kind, extra)
+
+    # A build must include the bootloader at 0x0 and the app at 0x10000, or the board won't boot.
+    offsets = {off for off, _ in parts}
+    if 0 not in offsets or APP_OFFSET not in offsets:
+        raise ImageError("This build doesn't include both the bootloader (0x0) and the app (0x10000) - "
+                         "run a full `idf.py build` first.")
+    app_path = dict(parts)[APP_OFFSET]
+    with open(app_path, "rb") as f:
+        app = read_app_info(f.read(0x200), 0)
+    if app and not kind:
+        kind = kind_from_project(app.project)
+    return FlashPlan(f"local build '{name}' ({len(parts)} parts)", parts, kind, extra, app=app, source="BUILD")
+
+
+def find_fork_build() -> Optional[Path]:
+    """
+    The fork's own build folder, if we can find it: Dimension Hopper lives in <repo>/tools/updater
+    (the exe in <repo>/tools/updater/dist), so walk up looking for <repo>/build/flasher_args.json.
+    """
+    starts = [Path(sys.executable).resolve(), Path(__file__).resolve()]
+    for start in starts:
+        for parent in list(start.parents)[:5]:
+            cand = parent / "build"
+            if (cand / "flasher_args.json").exists() and (parent / "main").is_dir():
+                return cand
+    return None
 
 
 @dataclass
