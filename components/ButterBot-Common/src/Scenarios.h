@@ -363,11 +363,26 @@ constexpr std::array activations = std::to_array<ScenarioActivation>(
 		{ BB::Action::Scenario::OpenPortal, {}, "open a portal", "bPcN c PeRTcL", "PeRTcL" },
 		{ BB::Action::Scenario::OpenPortal, {}, "open portal", "bPcN PeRTcL", "PeRTcL" },
 		{ BB::Action::Scenario::OpenPortal, {}, "make a portal", "MdK c PeRTcL", "PeRTcL" },
+		// "do you know <character>" chat lines
+		{ BB::Action::Scenario::Chat, ScenarioData{ 34 }, "do you know rick", "Do Yo Nb RgK", "RgK" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 35 }, "do you know morty", "Do Yo Nb MeRTm", "MeRTm" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 36 }, "do you know summer", "Do Yo Nb ScMk", "ScMk" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 37 }, "do you know beth", "Do Yo Nb Bfv", "Bfv" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 38 }, "do you know jerry", "Do Yo Nb qfRm", "qfRm" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 39 }, "do you know mister meeseeks", "Do Yo Nb MgSTk MmSmKS", "MgSTk MmSmKS" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 40 }, "do you know birdperson", "Do Yo Nb BkDPkScN", "BkDPkScN" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 41 }, "do you know squanchy", "Do Yo Nb SKWnNpm", "SKWnNpm" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 42 }, "do you know mister poopybutthole", "Do Yo Nb MgSTk PoPcBYovcL", "MgSTk PoPcBYovcL" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 43 }, "do you know evil morty", "Do Yo Nb mVcL MeRTm", "mVcL MeRTm" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 44 }, "do you know unity", "Do Yo Nb YoNcTm", "YoNcTm" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 45 }, "do you know scary terry", "Do Yo Nb SKfRm TfRm", "SKfRm TfRm" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 46 }, "do you know noob noob", "Do Yo Nb NoB NoB", "NoB NoB" },
+		{ BB::Action::Scenario::Chat, ScenarioData{ 47 }, "do you know snowball", "Do Yo Nb SNbBeL", "SNbBeL" },
 	}
 );
 
 // Number of chat lines (Phrase::Chat replies); robot routines and the controller window rely on it.
-constexpr uint8_t ChatLineCount = 34;
+constexpr uint8_t ChatLineCount = 48;
 
 constexpr int ActivationsNum = (int) activations.size();
 
