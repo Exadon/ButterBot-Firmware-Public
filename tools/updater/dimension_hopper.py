@@ -21,6 +21,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 import hopper_core as core
+from guide_tab import GuideTab
 from hopper_core import Kind
 
 APP_TITLE = "Dimension Hopper"
@@ -185,6 +186,8 @@ class DeviceSlot(tk.Frame):
         self.port_box.bind("<<ComboboxSelected>>", lambda e: self._port_changed())
         self.probe_btn = app.button(row, "Probe", lambda: app.run_probe(self), small=True)
         self.probe_btn.pack(side="left", padx=(6, 0))
+        self.status_btn = app.button(row, "Status", lambda: app.run_status(self), small=True)
+        self.status_btn.pack(side="left", padx=(6, 0))
 
         self.chip_lbl = tk.Label(self, text="No board identified yet", bg=PANEL, fg=DIM, anchor="w",
                                  font=("Segoe UI", 9))
@@ -451,7 +454,7 @@ class App:
 
         root.title(f"{APP_TITLE} {VERSION}")
         root.configure(bg=BG)
-        root.minsize(900, 700)
+        root.minsize(1080, 860)
         self._style()
 
         # header
@@ -468,8 +471,17 @@ class App:
                                  font=("Segoe UI", 10, "italic"))
         self.headline.pack(anchor="w", pady=(6, 0))
 
+        # tabs: Flash (the updater) and Guide (controls + voice commands)
+        nb = ttk.Notebook(root, style="Hop.TNotebook")
+        nb.pack(fill="both", expand=True, padx=12, pady=(0, 10))
+        flash = tk.Frame(nb, bg=BG)
+        nb.add(flash, text="  Flash  ")
+        pal = dict(BG=BG, PANEL=PANEL, PANEL_HI=PANEL_HI, EDGE=EDGE, GREEN=GREEN, LIME=LIME, TEAL=TEAL, DIM=DIM,
+                   TEXT=TEXT, WARN=WARN, BAD=BAD)
+        nb.add(GuideTab(nb, pal, load_art), text="  Guide  ")
+
         # devices
-        mid = tk.Frame(root, bg=BG)
+        mid = tk.Frame(flash, bg=BG)
         mid.pack(fill="x", padx=18, pady=6)
         mid.columnconfigure(0, weight=1, uniform="slot")
         mid.columnconfigure(1, weight=1, uniform="slot")
@@ -478,7 +490,7 @@ class App:
         self.slots[Kind.CTRL].grid(row=0, column=1, sticky="nsew", padx=(8, 0))
 
         # action bar
-        bar = tk.Frame(root, bg=BG)
+        bar = tk.Frame(flash, bg=BG)
         bar.pack(fill="x", padx=18, pady=(8, 4))
         self.scan_btn = self.button(bar, "⟳  Scan dimensions", self.run_scan)
         self.scan_btn.pack(side="left")
@@ -492,7 +504,7 @@ class App:
         self.button(bar, "Backups folder", lambda: core.open_folder(core.BACKUP_DIR), small=True).pack(side="right")
 
         # log
-        logf = tk.Frame(root, bg=PANEL, highlightbackground=EDGE, highlightthickness=1)
+        logf = tk.Frame(flash, bg=PANEL, highlightbackground=EDGE, highlightthickness=1)
         logf.pack(fill="both", expand=True, padx=18, pady=(4, 16))
         self.log_txt = tk.Text(logf, bg="#040705", fg="#7dffa0", insertbackground=GREEN, relief="flat",
                                font=MONO, height=10, wrap="none", state="disabled")
@@ -524,6 +536,16 @@ class App:
         st.configure("Hop.Vertical.TScrollbar", background=PANEL_HI, troughcolor="#040705", arrowcolor=GREEN,
                      bordercolor=EDGE, lightcolor=PANEL_HI, darkcolor=PANEL_HI, gripcount=0)
         st.map("Hop.Vertical.TScrollbar", background=[("active", "#1f5a2c")])
+        st.configure("Hop.TNotebook", background=BG, borderwidth=0, tabmargins=(6, 4, 6, 0))
+        st.configure("Hop.TNotebook.Tab", background=PANEL, foreground=DIM, padding=(14, 6),
+                     font=("Segoe UI Semibold", 10), borderwidth=0)
+        st.map("Hop.TNotebook.Tab", background=[("selected", PANEL_HI)], foreground=[("selected", GREEN)])
+        st.configure("Hop.Treeview", background=PANEL, fieldbackground=PANEL, foreground=TEXT, rowheight=22,
+                     borderwidth=0, font=("Segoe UI", 9))
+        st.map("Hop.Treeview", background=[("selected", "#1f5a2c")], foreground=[("selected", LIME)])
+        st.configure("Hop.Treeview.Heading", background=PANEL_HI, foreground=GREEN, relief="flat",
+                     font=("Segoe UI Semibold", 9))
+        st.map("Hop.Treeview.Heading", background=[("active", PANEL_HI)])
         self.root.option_add("*TCombobox*Listbox.background", PANEL_HI)
         self.root.option_add("*TCombobox*Listbox.foreground", TEXT)
         self.root.option_add("*TCombobox*Listbox.selectBackground", "#1f5a2c")
@@ -571,7 +593,7 @@ class App:
         for b in (self.scan_btn, self.both_btn):
             b.configure(state=state)
         for s in self.slots.values():
-            for b in (s.go_btn, s.probe_btn, s.browse_btn):
+            for b in (s.go_btn, s.probe_btn, s.status_btn, s.browse_btn):
                 b.configure(state=state)
 
     def job(self, name: str, fn):
@@ -625,6 +647,24 @@ class App:
             self.ui(lambda: self.headline.configure(
                 text="Scan complete. Boards are parked in bootloader mode - pick payloads and beam.", fg=DIM))
         self.job("Scan", work)
+
+    def run_status(self, slot: DeviceSlot):
+        """Reads the board's [BBSTAT] line without resetting it: battery, charging, link, firmware."""
+        port = slot.port()
+        if not port:
+            messagebox.showinfo(APP_TITLE, "Pick a port first (or hit Scan dimensions).")
+            return
+        slot.chip_lbl.configure(text=f"Listening on {port} for a status line…", fg=DIM)
+
+        def work():
+            st = core.read_status(port)
+            ok = not st.error
+            low = st.battery is not None and st.battery <= 15
+            color = BAD if not ok else (WARN if low else GREEN)
+            text = st.summary() + ("  ⚠ low battery" if low else "")
+            self.tlog(f"{port}: {text}", "hi" if ok and not low else ("warn" if ok else "bad"))
+            self.ui(lambda: slot.chip_lbl.configure(text=text, fg=color))
+        self.job("Status", work)
 
     def run_probe(self, slot: DeviceSlot):
         port = slot.port()
@@ -839,6 +879,9 @@ def _selftest(out: str):
     lines.append(f"ports: {[p.device for p in core.list_ports()]}")
     lines.append(f"fork builds: bot={core.find_fork_build('bot')} ctrl={core.find_fork_build('ctrl')}")
     lines.append(f"ctrl repos: {core.repo_choices(core.load_config(), 'ctrl')}")
+    from guide_tab import GuideTab, _asset
+    lines.append(f"guide: {len(GuideTab._load_data()['entries'])} voice actions; images "
+                 f"{[n for n in ('bot_guide.png', 'controller_guide.png') if _asset(n).exists()]}")
     lines.append(f"probe COM250: {core.probe('COM250').error[:60]}")
     Path(out).write_text("\n".join(lines), encoding="utf-8")
 

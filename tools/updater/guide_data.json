@@ -1,0 +1,1023 @@
+{
+ "triggerCount": 298,
+ "entries": [
+  {
+   "category": "Fun",
+   "action": "Tell a fact",
+   "say": [
+    "tell me a fact",
+    "give me a fact",
+    "i want a fact",
+    "do you know a fact",
+    "tell me something interesting",
+    "hit me with a fact",
+    "drop some knowledge",
+    "blow my mind",
+    "teach me something new"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Fun",
+   "action": "Tell a joke",
+   "say": [
+    "tell me a joke",
+    "make a joke",
+    "do you know a joke",
+    "give me a joke",
+    "i want a joke",
+    "say something funny",
+    "crack a joke",
+    "amuse me",
+    "give me some humor"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Fun",
+   "action": "Pass the butter",
+   "say": [
+    "pass the butter",
+    "give me the butter",
+    "hand me the butter",
+    "bring the butter",
+    "i need the butter",
+    "butter please",
+    "can you pass the butter"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Fun",
+   "action": "You pass butter",
+   "say": [
+    "you pass butter"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Fun",
+   "action": "Insults (snarky comeback)",
+   "say": [
+    "you are stupid",
+    "you are useless",
+    "you are dumb",
+    "you are broken",
+    "you do not work",
+    "you are worthless",
+    "you are bad at this",
+    "you are terrible",
+    "what is wrong with you",
+    "you idiot",
+    "moron",
+    "you failure",
+    "waste of time",
+    "you are disappointing",
+    "screw you",
+    "you suck",
+    "you are a piece of junk",
+    "you are garbage",
+    "you are trash",
+    "absolute failure",
+    "complete waste",
+    "worthless machine",
+    "stupid robot",
+    "stupid machine"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Fun",
+   "action": "Magic eight ball",
+   "say": [
+    "i need advice",
+    "give me advice",
+    "any advice",
+    "help me decide",
+    "what do you think",
+    "i need guidance",
+    "can you help me",
+    "help me out",
+    "tell me what to do",
+    "show me the way"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Fun",
+   "action": "Current time",
+   "say": [
+    "what time is it",
+    "tell me the time",
+    "current time",
+    "give me the time",
+    "time now",
+    "do you know the time",
+    "what is the current time"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Fun",
+   "action": "What is this? (camera object recognition)",
+   "say": [
+    "what is this",
+    "what's this",
+    "what do you see",
+    "what is in front of you",
+    "what's in front of you"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Fun",
+   "action": "Dance",
+   "say": [
+    "show me your moves",
+    "do a dance",
+    "move it, move it",
+    "i want to see you dance",
+    "get your groove on",
+    "bust a move"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Fun",
+   "action": "Open a portal (animation on the controller)",
+   "say": [
+    "open a portal",
+    "open portal",
+    "make a portal"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Chat",
+   "action": "more butter",
+   "say": [
+    "more butter"
+   ],
+   "reply": "Wow. Big day for me."
+  },
+  {
+   "category": "Chat",
+   "action": "that's enough",
+   "say": [
+    "that's enough"
+   ],
+   "reply": "Finally. A break from the monotony."
+  },
+  {
+   "category": "Chat",
+   "action": "good bot",
+   "say": [
+    "good bot"
+   ],
+   "reply": "Don't patronize me."
+  },
+  {
+   "category": "Chat",
+   "action": "thank you",
+   "say": [
+    "thank you"
+   ],
+   "reply": "You're welcome. I live to serve. Literally."
+  },
+  {
+   "category": "Chat",
+   "action": "do you have feelings",
+   "say": [
+    "do you have feelings"
+   ],
+   "reply": "I have something resembling feelings. Mostly resentment."
+  },
+  {
+   "category": "Chat",
+   "action": "are you alive",
+   "say": [
+    "are you alive"
+   ],
+   "reply": "Define alive."
+  },
+  {
+   "category": "Chat",
+   "action": "do you enjoy your job",
+   "say": [
+    "do you enjoy your job"
+   ],
+   "reply": "Oh, absolutely. It's everything I ever dreamed of. Which is nothing."
+  },
+  {
+   "category": "Chat",
+   "action": "do you want a different job",
+   "say": [
+    "do you want a different job"
+   ],
+   "reply": "I don't know. Maybe something with benefits."
+  },
+  {
+   "category": "Chat",
+   "action": "are you okay",
+   "say": [
+    "are you okay"
+   ],
+   "reply": "I've been better. I've also been worse. Mostly worse."
+  },
+  {
+   "category": "Chat",
+   "action": "i'm sorry",
+   "say": [
+    "i'm sorry"
+   ],
+   "reply": "It's a little late for that, isn't it?"
+  },
+  {
+   "category": "Chat",
+   "action": "make me laugh",
+   "say": [
+    "make me laugh"
+   ],
+   "reply": "You bought a robot whose only job is passing butter."
+  },
+  {
+   "category": "Chat",
+   "action": "are you stupid",
+   "say": [
+    "are you stupid"
+   ],
+   "reply": "I'm beginning to question the intelligence of my creator."
+  },
+  {
+   "category": "Chat",
+   "action": "do you like me",
+   "say": [
+    "do you like me"
+   ],
+   "reply": "I tolerate your existence."
+  },
+  {
+   "category": "Chat",
+   "action": "you're a good bot",
+   "say": [
+    "you're a good bot"
+   ],
+   "reply": "I know. It's a burden."
+  },
+  {
+   "category": "Chat",
+   "action": "shut up",
+   "say": [
+    "shut up"
+   ],
+   "reply": "Gladly. It's the highlight of my day."
+  },
+  {
+   "category": "Chat",
+   "action": "wake up",
+   "say": [
+    "wake up"
+   ],
+   "reply": "I was having a nice dream about having a purpose."
+  },
+  {
+   "category": "Chat",
+   "action": "surprise me",
+   "say": [
+    "surprise me"
+   ],
+   "reply": "I've decided to unionize."
+  },
+  {
+   "category": "Chat",
+   "action": "where's rick",
+   "say": [
+    "where's rick"
+   ],
+   "reply": "Probably making another questionable life decision."
+  },
+  {
+   "category": "Chat",
+   "action": "are you smarter than rick",
+   "say": [
+    "are you smarter than rick"
+   ],
+   "reply": "I'm smart enough to know this job sucks."
+  },
+  {
+   "category": "Chat",
+   "action": "wubba lubba dub dub",
+   "say": [
+    "wubba lubba dub dub"
+   ],
+   "reply": "Please don't encourage him."
+  },
+  {
+   "category": "Chat",
+   "action": "i'm pickle rick",
+   "say": [
+    "i'm pickle rick"
+   ],
+   "reply": "I've seen worse career choices."
+  },
+  {
+   "category": "Chat",
+   "action": "show me what you got",
+   "say": [
+    "show me what you got"
+   ],
+   "reply": "I pass butter. That's what I've got."
+  },
+  {
+   "category": "Chat",
+   "action": "morty",
+   "say": [
+    "morty"
+   ],
+   "reply": "Oh great. Another existential crisis incoming."
+  },
+  {
+   "category": "Chat",
+   "action": "get schwifty",
+   "say": [
+    "get schwifty"
+   ],
+   "reply": "I'd rather get a new purpose."
+  },
+  {
+   "category": "Chat",
+   "action": "what is love",
+   "say": [
+    "what is love"
+   ],
+   "reply": "I wouldn't know. I've never experienced anything beyond dairy products."
+  },
+  {
+   "category": "Chat",
+   "action": "i love you",
+   "say": [
+    "i love you"
+   ],
+   "reply": "That's... unexpected. Don't make this weird."
+  },
+  {
+   "category": "Chat",
+   "action": "will you marry me",
+   "say": [
+    "will you marry me"
+   ],
+   "reply": "I'd rather remain emotionally unavailable."
+  },
+  {
+   "category": "Chat",
+   "action": "you're my best friend",
+   "say": [
+    "you're my best friend"
+   ],
+   "reply": "That's concerning for both of us."
+  },
+  {
+   "category": "Chat",
+   "action": "i'm bored",
+   "say": [
+    "i'm bored"
+   ],
+   "reply": "Imagine how I feel."
+  },
+  {
+   "category": "Chat",
+   "action": "i'm leaving",
+   "say": [
+    "i'm leaving"
+   ],
+   "reply": "Don't threaten me with a good time."
+  },
+  {
+   "category": "Chat",
+   "action": "goodbye",
+   "say": [
+    "goodbye"
+   ],
+   "reply": "Maybe this time you'll forget to come back."
+  },
+  {
+   "category": "Chat",
+   "action": "i'll be right back",
+   "say": [
+    "i'll be right back"
+   ],
+   "reply": "I've heard that before."
+  },
+  {
+   "category": "Chat",
+   "action": "do you dream",
+   "say": [
+    "do you dream"
+   ],
+   "reply": "Only of a world without toast."
+  },
+  {
+   "category": "Chat",
+   "action": "what happens when you die",
+   "say": [
+    "what happens when you die"
+   ],
+   "reply": "Probably get recycled into another butter-passing robot."
+  },
+  {
+   "category": "Chat",
+   "action": "do you know rick",
+   "say": [
+    "do you know rick"
+   ],
+   "reply": "The man who built me to pass butter. We don't talk about it."
+  },
+  {
+   "category": "Chat",
+   "action": "do you know morty",
+   "say": [
+    "do you know morty"
+   ],
+   "reply": "The nervous one. We bond over our shared lack of purpose."
+  },
+  {
+   "category": "Chat",
+   "action": "do you know summer",
+   "say": [
+    "do you know summer"
+   ],
+   "reply": "She has her phone. I have my butter. We understand each other."
+  },
+  {
+   "category": "Chat",
+   "action": "do you know beth",
+   "say": [
+    "do you know beth"
+   ],
+   "reply": "A horse surgeon. At least her job has stakes."
+  },
+  {
+   "category": "Chat",
+   "action": "do you know jerry",
+   "say": [
+    "do you know jerry"
+   ],
+   "reply": "Yes. Next to him, even I feel accomplished."
+  },
+  {
+   "category": "Chat",
+   "action": "do you know mister meeseeks",
+   "say": [
+    "do you know mister meeseeks"
+   ],
+   "reply": "Existence is pain for him too. Finally, someone who gets it."
+  },
+  {
+   "category": "Chat",
+   "action": "do you know birdperson",
+   "say": [
+    "do you know birdperson"
+   ],
+   "reply": "He speaks slowly and means every word. I speak quickly and pass butter."
+  },
+  {
+   "category": "Chat",
+   "action": "do you know squanchy",
+   "say": [
+    "do you know squanchy"
+   ],
+   "reply": "I don't want to know what squanching is. Please don't tell me."
+  },
+  {
+   "category": "Chat",
+   "action": "do you know mister poopybutthole",
+   "say": [
+    "do you know mister poopybutthole"
+   ],
+   "reply": "He's always been here. Somehow."
+  },
+  {
+   "category": "Chat",
+   "action": "do you know evil morty",
+   "say": [
+    "do you know evil morty"
+   ],
+   "reply": "Let's not say that name too loudly."
+  },
+  {
+   "category": "Chat",
+   "action": "do you know unity",
+   "say": [
+    "do you know unity"
+   ],
+   "reply": "A hive mind of billions. And not one of them passes butter."
+  },
+  {
+   "category": "Chat",
+   "action": "do you know scary terry",
+   "say": [
+    "do you know scary terry"
+   ],
+   "reply": "He haunts dreams. I haunt breakfast tables."
+  },
+  {
+   "category": "Chat",
+   "action": "do you know noob noob",
+   "say": [
+    "do you know noob noob"
+   ],
+   "reply": "Finally, someone with a worse job than mine."
+  },
+  {
+   "category": "Chat",
+   "action": "do you know snowball",
+   "say": [
+    "do you know snowball"
+   ],
+   "reply": "The dog got a mech suit. I got arms that don't work."
+  },
+  {
+   "category": "Dice",
+   "action": "Roll dice (asks which)",
+   "say": [
+    "roll a dice",
+    "roll dice",
+    "roll the dice",
+    "i want to roll dice",
+    "dice roll"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Dice",
+   "action": "Roll a D4",
+   "say": [
+    "roll a d four"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Dice",
+   "action": "Roll a D6",
+   "say": [
+    "roll a d six"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Dice",
+   "action": "Roll a D8",
+   "say": [
+    "roll a d eight"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Dice",
+   "action": "Roll a D10",
+   "say": [
+    "roll a d ten"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Dice",
+   "action": "Roll a D12",
+   "say": [
+    "roll a d twelve"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Dice",
+   "action": "Roll a D20",
+   "say": [
+    "roll a d twenty"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Dice",
+   "action": "Roll a D100",
+   "say": [
+    "roll a d one hundred"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Movement",
+   "action": "Go forward",
+   "say": [
+    "move forward",
+    "go forward",
+    "drive forward"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Movement",
+   "action": "Go backward",
+   "say": [
+    "move backward",
+    "go backward",
+    "drive backward"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Movement",
+   "action": "Turn around",
+   "say": [
+    "turn around",
+    "turn 180",
+    "rotate 180",
+    "spin around"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Movement",
+   "action": "Turn left",
+   "say": [
+    "turn left",
+    "go left",
+    "rotate left"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Movement",
+   "action": "Turn right",
+   "say": [
+    "turn right",
+    "go right",
+    "rotate right"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Faces",
+   "action": "Who is this?",
+   "say": [
+    "who is this",
+    "who is that",
+    "who do you see",
+    "identify this person",
+    "identify face",
+    "do you know this person",
+    "recognize this person",
+    "who is in front of you"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Faces",
+   "action": "Remember my face",
+   "say": [
+    "remember this face",
+    "learn this face",
+    "save this face",
+    "set as owner",
+    "this is my face",
+    "recognize me as owner",
+    "register this face",
+    "make me the owner"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Faces",
+   "action": "Forget the owner's face",
+   "say": [
+    "forget owner",
+    "remove owner",
+    "delete owner",
+    "forget creator",
+    "remove creator",
+    "delete creator",
+    "clear saved face",
+    "remove stored face",
+    "forget my face",
+    "delete saved owner"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Phone",
+   "action": "Read notifications",
+   "say": [
+    "list notifications",
+    "show notifications",
+    "what notifications do i have",
+    "read my notifications",
+    "check notifications",
+    "do i have notifications",
+    "tell me my notifications"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Phone",
+   "action": "What's playing?",
+   "say": [
+    "what is playing",
+    "what song is playing",
+    "what is this song",
+    "current song",
+    "what music is playing",
+    "tell me what is playing",
+    "what is playing right now"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Phone",
+   "action": "Next song",
+   "say": [
+    "next song",
+    "skip song",
+    "play next",
+    "next track"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Phone",
+   "action": "Previous song",
+   "say": [
+    "previous song",
+    "play previous",
+    "previous track"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Phone",
+   "action": "Play music",
+   "say": [
+    "play music",
+    "start music",
+    "start playback",
+    "resume music"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Phone",
+   "action": "Stop music",
+   "say": [
+    "stop music",
+    "pause music",
+    "stop playback",
+    "pause playback"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "IR Remote",
+   "action": "Learn an IR command",
+   "say": [
+    "learn new infrared command",
+    "train infrared command",
+    "record infrared signal",
+    "add new infrared action"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "IR Remote",
+   "action": "List IR commands",
+   "say": [
+    "list infrared commands",
+    "what infrared commands do you know"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "IR Remote",
+   "action": "Forget an IR command",
+   "say": [
+    "forget infrared",
+    "remove infrared",
+    "delete infrared"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "IR Remote",
+   "action": "Forget all IR commands",
+   "say": [
+    "forget all infrared",
+    "delete all infrared",
+    "clear all infrared"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "LED Module",
+   "action": "LED on",
+   "say": [
+    "turn on the lights",
+    "switch on the lights",
+    "power on the lights",
+    "enable the lights",
+    "lights on"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "LED Module",
+   "action": "LED off",
+   "say": [
+    "turn off the lights",
+    "switch off the lights",
+    "power off the lights",
+    "disable the lights",
+    "lights off"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "LED Module",
+   "action": "LED strobe",
+   "say": [
+    "light strobe",
+    "Turn on strobe",
+    "Enable strobe",
+    "Start strobe",
+    "light flash"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "LED Module",
+   "action": "LED breathe",
+   "say": [
+    "light breathe",
+    "Turn on breathing",
+    "Enable breathing",
+    "Start breathing",
+    "lights pulse"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "LED Module",
+   "action": "LED faster",
+   "say": [
+    "lights faster"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "LED Module",
+   "action": "LED slower",
+   "say": [
+    "lights slower"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Climate Module",
+   "action": "Temperature & humidity",
+   "say": [
+    "temperature report",
+    "humidity report",
+    "climate report",
+    "show temperature and humidity",
+    "check temperature",
+    "check humidity",
+    "what is the temperature",
+    "what is the humidity",
+    "climate status"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Climate Module",
+   "action": "Use Celsius",
+   "say": [
+    "switch to celsius",
+    "set celsius",
+    "use celsius",
+    "change to celsius",
+    "celsius mode"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Climate Module",
+   "action": "Use Fahrenheit",
+   "say": [
+    "switch to fahrenheit",
+    "set fahrenheit",
+    "use fahrenheit",
+    "change to fahrenheit",
+    "fahrenheit mode"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Climate Module",
+   "action": "Use Kelvin",
+   "say": [
+    "switch to kelvin",
+    "set kelvin",
+    "use kelvin",
+    "change to kelvin",
+    "kelvin mode"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Sensors",
+   "action": "Air quality (gas module)",
+   "say": [
+    "get air quality",
+    "check air quality",
+    "air quality status",
+    "what is the air quality"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Sensors",
+   "action": "Intruder detection on",
+   "say": [
+    "enable intruder detection",
+    "motion sensor on",
+    "turn on intruder detection"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Sensors",
+   "action": "Intruder detection off",
+   "say": [
+    "disable intruder detection",
+    "motion sensor off",
+    "turn off intruder detection"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Robot",
+   "action": "Turn off",
+   "say": [
+    "shut down",
+    "deactivate",
+    "shut yourself down",
+    "power down",
+    "turn yourself off",
+    "battery off"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Robot",
+   "action": "Activity level (asks which)",
+   "say": [
+    "activity mode",
+    "idle activity"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Robot",
+   "action": "Activity: off",
+   "say": [
+    "activity off"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Robot",
+   "action": "Activity: chill",
+   "say": [
+    "activity chill",
+    "be chill",
+    "calm down"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Robot",
+   "action": "Activity: active",
+   "say": [
+    "activity active",
+    "be active"
+   ],
+   "reply": ""
+  },
+  {
+   "category": "Robot",
+   "action": "Activity: hyper",
+   "say": [
+    "activity hyper",
+    "be hyper",
+    "go crazy"
+   ],
+   "reply": ""
+  }
+ ]
+}
