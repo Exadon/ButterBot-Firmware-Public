@@ -6,7 +6,8 @@ A one-window firmware updater for **ButterBot** and its **controller**, with a m
 
 ## What it does
 
-- **Finds the boards.** *Scan dimensions* lists Espressif USB devices (VID `303A`) and probes each one. Both boards are ESP32-S3, so the probe tells them apart by flash size: 16 MB is the robot, 4 MB is the controller. Each board is dropped into the right slot automatically.
+- **Finds the boards.** *Scan dimensions* probes every USB serial port (the robot shows up as a CH340, Bluetooth ports are skipped). Both boards are ESP32-S3, so the probe tells them apart by flash size: 16 MB is the robot, 4 MB is the controller. Each board is dropped into the right slot automatically.
+- **Keeps the robot awake.** The robot's USB chip runs off the robot's own power, and its firmware switches the robot off if it boots without the power button held. So after a probe or backup the chip stays parked in bootloader mode instead of rebooting. Turn the robot on (hold power ~2 s) *before* scanning.
 - **Picks a payload per board:**
   - *Latest GitHub release*: the stock CircuitMess repos by default. Type your fork's `owner/repo` to ship your own releases. Downloads are cached.
   - *Local .bin / backup*: any merged full-flash image written at `0x0`, including a backup this tool made.
@@ -16,7 +17,7 @@ A one-window firmware updater for **ButterBot** and its **controller**, with a m
 - **Verifies** every region after writing (esptool MD5 check), then reboots the board.
 - **Update both** runs the robot and then the controller in one go.
 
-After a robot flash, press its power button. The firmware powers itself off if the button isn't held at boot.
+After a robot flash, hold its power button to turn it on: the new firmware also powers off if the button isn't held at boot. Windows may hand the robot a different COM number after it power-cycles; just Scan again.
 
 ## Build the exe
 

@@ -2,9 +2,15 @@
 Dimension Hopper core: everything that talks to hardware, GitHub or the disk.
 No UI code lives here, so it can be tested headless.
 
-Both ButterBot and its controller are ESP32-S3 boards on the native USB-Serial/JTAG port
-(VID 0x303A), so the USB IDs alone can't tell them apart. Their flash chips can:
-the robot has 16 MB, the controller 4 MB. A probe (esptool flash_id) reads that.
+Both ButterBot and its controller are ESP32-S3 boards. They may show up through a USB-serial
+bridge (the robot uses a CH340, VID 0x1A86) or the S3's native USB (VID 0x303A), so USB IDs
+can't tell them apart. Their flash chips can: the robot has 16 MB, the controller 4 MB.
+A probe (esptool flash_id) reads that.
+
+The robot's CH340 sits on the robot's own power rail, and the stock firmware powers the robot
+off when it boots without the power button held. So after a probe or a backup we leave the
+chip parked in the ROM bootloader (--after no_reset) instead of rebooting it; only the final
+write reboots into the new firmware.
 """
 from __future__ import annotations
 
@@ -24,6 +30,8 @@ from typing import Callable, Optional
 import serial.tools.list_ports
 
 ESPRESSIF_VID = 0x303A
+# USB-serial bridges commonly used on ESP32 boards, for nicer labels
+BRIDGES = {0x303A: "ESP32 native USB", 0x1A86: "CH34x", 0x10C4: "CP210x", 0x0403: "FTDI"}
 MiB = 1024 * 1024
 
 APP_NAME = "DimensionHopper"
@@ -56,10 +64,11 @@ class Kind:
 class PortInfo:
     device: str
     description: str
-    is_espressif: bool
+    is_usb: bool          # a real USB serial device (Bluetooth SPP ports have no VID)
+    bridge: str = ""
 
     def label(self) -> str:
-        tag = "  [ESP]" if self.is_espressif else ""
+        tag = f"  [{self.bridge}]" if self.bridge else ("  [USB]" if self.is_usb else "")
         return f"{self.device} - {self.description}{tag}"
 
 
@@ -83,9 +92,9 @@ class ProbeResult:
 def list_ports() -> list[PortInfo]:
     ports = []
     for p in serial.tools.list_ports.comports():
-        ports.append(PortInfo(p.device, p.description or "", p.vid == ESPRESSIF_VID))
-    # Espressif boards first, then natural COM order
-    ports.sort(key=lambda p: (not p.is_espressif, int(re.sub(r"\D", "", p.device) or 0)))
+        ports.append(PortInfo(p.device, p.description or "", p.vid is not None, BRIDGES.get(p.vid or -1, "")))
+    # USB devices first, then natural COM order
+    ports.sort(key=lambda p: (not p.is_usb, int(re.sub(r"\D", "", p.device) or 0)))
     return ports
 
 
@@ -163,11 +172,22 @@ def _base_args(port: str, baud: int) -> list[str]:
     return ["--chip", "esp32s3", "--port", port, "--baud", str(baud)]
 
 
+def port_exists(port: str) -> bool:
+    return any(p.device == port for p in serial.tools.list_ports.comports())
+
+
 def probe(port: str, baud: int = 921600, on_line=lambda s: None) -> ProbeResult:
-    """Resets the board into the ROM bootloader, reads chip + flash size, then resets it back."""
+    """
+    Resets the board into the ROM bootloader and reads chip + flash size. Leaves it parked there:
+    rebooting would run the firmware, which powers the robot (and its USB bridge) off.
+    """
     res = ProbeResult(port)
+    if not port_exists(port):
+        res.error = (f"{port} isn't there any more. The robot probably powered itself off - "
+                     "hold its power button ~2 s to turn it on, then Scan again.")
+        return res
     try:
-        text = run_esptool(_base_args(port, baud) + ["--after", "hard_reset", "flash_id"], on_line)
+        text = run_esptool(_base_args(port, baud) + ["--after", "no_reset", "flash_id"], on_line)
     except EsptoolError as e:
         res.error = str(e)
         return res

@@ -469,17 +469,18 @@ class App:
         ports = core.list_ports()
         for s in self.slots.values():
             s.set_ports(ports)
-        esp = [p for p in ports if p.is_espressif]
-        if auto_assign and len(esp) == 1:
-            self.log(f"One ESP board on {esp[0].device}. Hit Scan to find out which one it is.")
+        usb = [p for p in ports if p.is_usb]
+        if auto_assign and usb:
+            self.log(f"USB serial ports: {', '.join(p.device for p in usb)}. Hit Scan to see what's on them.")
         return ports
 
     def run_scan(self):
         ports = self.refresh_ports()
-        esp = [p for p in ports if p.is_espressif]
+        esp = [p for p in ports if p.is_usb]
         if not esp:
-            self.headline.configure(text="No ESP32 boards found. Plug one in over USB-C (data cable!).", fg=WARN)
-            self.log("No Espressif USB devices (VID 303A) found.", "warn")
+            self.headline.configure(text="No USB serial boards found. Is the robot ON? Hold its power button ~2 s.", fg=WARN)
+            self.log("No USB serial devices found. The robot's USB only appears while it's powered on "
+                     "(hold the power button ~2 s), and the cable must carry data.", "warn")
             return
         self.headline.configure(text=quip("probe"), fg=DIM)
         self.log(f"{quip('scan')} found {', '.join(p.device for p in esp)}")
@@ -496,7 +497,8 @@ class App:
                 if r.kind in self.slots:
                     slot = self.slots[r.kind]
                     self.ui(lambda s=slot, r=r: (s.select_port(r.port), s.show_probe(r)))
-            self.ui(lambda: self.headline.configure(text="Scan complete. Pick your payloads and beam.", fg=DIM))
+            self.ui(lambda: self.headline.configure(
+                text="Scan complete. Boards are parked in bootloader mode - pick payloads and beam.", fg=DIM))
         self.job("Scan", work)
 
     def run_probe(self, slot: DeviceSlot):
