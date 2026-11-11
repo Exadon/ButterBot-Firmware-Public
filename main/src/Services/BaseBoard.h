@@ -129,6 +129,45 @@ private:
 	static std::atomic<bool> proxRebaselineDue;
 	static void proxTimerFunc(void*);
 
+	/*
+	 * Proximity filtering (fork). The motor board's front sensor produced false "something in the way"
+	 * readings - one bad sample was enough to refuse or abort a move. Filtering happens here, so every
+	 * routine (Wander, Summon, Person, Dance, voice movement) gets it without changes:
+	 *  - Front "covered" events are held as pending and only reported once they've lasted FrontDebounceMs
+	 *    AND the settling window after a motor start / re-baseline (FrontSettleMs) is over; an "uncovered"
+	 *    before then cancels them as a glitch. A real obstacle is still reported, just up to ~250 ms later.
+	 *  - requestProximityState() takes VoteSamples readings VoteSpacingMs apart: front is covered only if
+	 *    the majority says so; the floor (cliff) sensor stays conservative - any "no floor" counts.
+	 *  - Bottom (cliff) change events are NOT delayed: that sensor keeps the robot on the table.
+	 * All filter state is only touched on BaseBoard's own thread; other threads just set atomics.
+	 */
+	static constexpr uint32_t FrontDebounceMs = 100;
+	static constexpr uint32_t FrontSettleMs = 250;
+	static constexpr uint8_t VoteSamples = 3;
+	static constexpr uint32_t VoteSpacingMs = 30;
+
+	std::atomic<uint64_t> frontSettleUntil{ 0 };
+
+	bool frontPendingCovered = false;
+	uint64_t frontPendingDeadline = 0;
+	bool frontReportedCovered = false;
+	StrongObjectPtr<Timer> frontTimer;
+	static std::atomic<bool> frontCheckDue;
+	static void frontTimerFunc(void*);
+	void armFrontTimer(uint64_t deadline);
+	void serviceFrontDebounce();
+
+	static std::atomic<bool> voteRequested;
+	static std::atomic<bool> voteNextDue;
+	StrongObjectPtr<Timer> voteTimer;
+	static void voteTimerFunc(void*);
+	bool voting = false;
+	uint8_t voteCount = 0;
+	uint8_t frontCoveredVotes = 0, frontUncoveredVotes = 0;
+	uint8_t bottomCoveredVotes = 0, bottomUncoveredVotes = 0;
+	void startVote();
+	void handleVoteReading(ProxState front, ProxState bot);
+
 	static void IRAM_ATTR motorBoardISR(void* arg);
 
 

@@ -25,6 +25,9 @@ static bool checkI2C(esp_err_t err, const char* what){
 
 SemaphoreHandle_t BaseBoard::sem;
 std::atomic<bool> BaseBoard::proxRebaselineDue{ false };
+std::atomic<bool> BaseBoard::frontCheckDue{ false };
+std::atomic<bool> BaseBoard::voteRequested{ false };
+std::atomic<bool> BaseBoard::voteNextDue{ false };
 
 BaseBoard::BaseBoard(std::unique_ptr<I2CDevice> device, bool internalStack) : AsyncEntity(0, 3 * 1024, 7, -1, internalStack), dev(std::move(device)){
 	CMF_LOG(BaseBoard, LogLevel::Info, "Initializing BaseBoard");
@@ -47,6 +50,8 @@ BaseBoard::BaseBoard(std::unique_ptr<I2CDevice> device, bool internalStack) : As
 	sem = xSemaphoreCreateBinary();
 	motorTimer = newObject<Timer>(this, MotorControlPeriod, timerFunc, nullptr, "baseBoard");
 	proxTimer = newObject<Timer>(this, ProxRebaselineDelayMs, proxTimerFunc, nullptr, "baseBoardProx");
+	frontTimer = newObject<Timer>(this, FrontDebounceMs, frontTimerFunc, nullptr, "bbFrontDebounce");
+	voteTimer = newObject<Timer>(this, VoteSpacingMs, voteTimerFunc, nullptr, "bbProxVote");
 
 	reset();
 
@@ -71,6 +76,9 @@ void BaseBoard::setMotors(int8_t left, int8_t right){
 		return;
 	}
 	motorTimer->stop();
+	if(left != 0 || right != 0){
+		frontSettleUntil = millis() + FrontSettleMs;
+	}
 	registerState.motorLeft = left;
 	registerState.motorRight = right;
 	const bool scanning = registerState.proximityScanning && !isBottomSensorOn();
@@ -101,6 +109,9 @@ void BaseBoard::setMotorLeft(int8_t value){
 		return;
 	}
 	motorTimer->stop();
+	if(value != 0){
+		frontSettleUntil = millis() + FrontSettleMs;
+	}
 	registerState.motorLeft = value;
 	const bool scanning = registerState.proximityScanning && !isBottomSensorOn();
 	regStateMutex.unlock();
@@ -128,6 +139,9 @@ void BaseBoard::setMotorRight(int8_t value){
 		return;
 	}
 	motorTimer->stop();
+	if(value != 0){
+		frontSettleUntil = millis() + FrontSettleMs;
+	}
 	registerState.motorRight = value;
 	const bool scanning = registerState.proximityScanning && !isBottomSensorOn();
 	regStateMutex.unlock();
@@ -175,6 +189,14 @@ void BaseBoard::rebaselineProximity(){
 	BB_I2C_CHECK(dev->writeRegister(ProximityScanning, static_cast<uint8_t>(0)));
 	delayMillis(ProxStopSettleMs);
 	BB_I2C_CHECK(dev->writeRegister(ProximityScanning, static_cast<uint8_t>(1)));
+
+	// The motor board just took a new baseline: give it time to settle, and drop a front hit that was
+	// still pending against the old one (it was never reported)
+	frontSettleUntil = millis() + FrontSettleMs;
+	if(frontPendingCovered){
+		frontPendingCovered = false;
+		frontTimer->stop();
+	}
 }
 
 // Absolute threshold I2C commands removed — Base uses relative band logic now
@@ -189,7 +211,77 @@ void BaseBoard::setProximityBotThreshold([[maybe_unused]] uint16_t threshold){
 }
 
 void BaseBoard::requestProximityState(){
+	// Runs a majority vote on BaseBoard's thread (see header); the result arrives as one onProximityReading
+	voteRequested = true;
+	xSemaphoreGive(sem);
+}
+
+void BaseBoard::startVote(){
+	voting = true;
+	voteCount = 0;
+	frontCoveredVotes = frontUncoveredVotes = 0;
+	bottomCoveredVotes = bottomUncoveredVotes = 0;
+	voteTimer->stop();
 	BB_I2C_CHECK(dev->write(ProximityStateRequest));
+}
+
+void BaseBoard::handleVoteReading(ProxState front, ProxState bot){
+	voteCount++;
+	if(front == ProxState::Covered) frontCoveredVotes++;
+	if(front == ProxState::Uncovered) frontUncoveredVotes++;
+	if(bot == ProxState::Covered) bottomCoveredVotes++;
+	if(bot == ProxState::Uncovered) bottomUncoveredVotes++;
+
+	if(voteCount < VoteSamples){
+		voteTimer->reset(); // next sample in VoteSpacingMs
+		return;
+	}
+
+	voting = false;
+	const ProxState votedFront = frontCoveredVotes * 2 > VoteSamples ? ProxState::Covered
+			: (frontCoveredVotes + frontUncoveredVotes > 0 ? ProxState::Uncovered : ProxState::Unknown);
+	const ProxState votedBottom = bottomUncoveredVotes > 0 ? ProxState::Uncovered // cliff: any "no floor" wins
+			: (bottomCoveredVotes > 0 ? ProxState::Covered : ProxState::Unknown);
+
+	if(frontCoveredVotes > 0 && votedFront != ProxState::Covered){
+		printf("[BaseBoard][%llu] Front reading outvoted (%u/%u covered)\n", millis(), frontCoveredVotes, VoteSamples);
+	}
+	onProximityReading.broadcast(votedFront, votedBottom);
+}
+
+void BaseBoard::frontTimerFunc(void*){
+	frontCheckDue = true;
+	xSemaphoreGive(sem);
+}
+
+void BaseBoard::voteTimerFunc(void*){
+	voteNextDue = true;
+	xSemaphoreGive(sem);
+}
+
+void BaseBoard::armFrontTimer(uint64_t deadline){
+	const uint64_t now = millis();
+	frontTimer->stop();
+	frontTimer->setPeriod(static_cast<uint32_t>(deadline > now ? deadline - now : 1));
+	frontTimer->start();
+}
+
+void BaseBoard::serviceFrontDebounce(){
+	if(!frontPendingCovered){
+		return;
+	}
+
+	// The settle window may have been extended (motors changed again) while we waited
+	frontPendingDeadline = std::max(frontPendingDeadline, frontSettleUntil.load());
+	if(millis() < frontPendingDeadline){
+		armFrontTimer(frontPendingDeadline);
+		return;
+	}
+
+	frontPendingCovered = false;
+	frontReportedCovered = true;
+	printf("[BaseBoard][%llu] Front sensor covered (confirmed)\n", millis());
+	onProximityChange.broadcast(ProxSensor::Front, true);
 }
 
 ChargingState BaseBoard::getChargingState(){
@@ -224,6 +316,16 @@ void BaseBoard::tick(float deltaTime) noexcept{
 
 	if(proxRebaselineDue.exchange(false)){
 		rebaselineProximity();
+	}
+
+	if(voteRequested.exchange(false)){
+		startVote();
+	}else if(voteNextDue.exchange(false) && voting){
+		BB_I2C_CHECK(dev->write(ProximityStateRequest));
+	}
+
+	if(frontCheckDue.exchange(false)){
+		serviceFrontDebounce();
 	}
 
 	if(gpio_get_level((gpio_num_t)MOTOR_BRD_INT) == 0){
@@ -340,6 +442,11 @@ void BaseBoard::processProximityReading(ProxState front, ProxState bot){
 		bot = ProxState::Covered;
 	}
 
+	if(voting){
+		handleVoteReading(front, bot);
+		return;
+	}
+
 	onProximityReading.broadcast(front, bot);
 }
 
@@ -350,6 +457,31 @@ void BaseBoard::processProximityChange(ProxSensor sensor, bool inThreshold){
 
 	if(sensor == ProxSensor::Bottom && isBottomSensorOff()){
 		return;
+	}
+
+	if(sensor == ProxSensor::Front){
+		if(inThreshold){
+			if(frontReportedCovered || frontPendingCovered){
+				return;
+			}
+			// Hold it: report only if it lasts FrontDebounceMs and outlives the motor-start settle window
+			frontPendingCovered = true;
+			frontPendingDeadline = std::max(millis() + FrontDebounceMs, frontSettleUntil.load());
+			armFrontTimer(frontPendingDeadline);
+			return;
+		}
+
+		if(frontPendingCovered){
+			// Cleared before it was confirmed: a glitch. Report neither edge.
+			frontPendingCovered = false;
+			frontTimer->stop();
+			printf("[BaseBoard][%llu] Front glitch ignored\n", millis());
+			return;
+		}
+		if(!frontReportedCovered){
+			return;
+		}
+		frontReportedCovered = false;
 	}
 
 	printf("[BaseBoard][%llu] %s sensor %s\n", millis(), sensor == ProxSensor::Front ? "Front" : "Bottom", inThreshold ? "covered" : "uncovered");
