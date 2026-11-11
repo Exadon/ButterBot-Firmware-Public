@@ -9,8 +9,10 @@ A probe (esptool flash_id) reads that.
 
 The robot's CH340 sits on the robot's own power rail, and the stock firmware powers the robot
 off when it boots without the power button held. So after a probe or a backup we leave the
-chip parked in the ROM bootloader (--after no_reset) instead of rebooting it; only the final
-write reboots into the new firmware.
+robot parked in the ROM bootloader (--after no_reset) instead of rebooting it; the final write
+reboots it into the new firmware. A parked board runs nothing (no BLE, so no pairing), so the app
+tracks parked ports and wakes them on request or when it closes. The controller doesn't lose power
+on reboot, so it's woken straight after the probe.
 """
 from __future__ import annotations
 
@@ -110,6 +112,7 @@ class ProbeResult:
     flash_bytes: int = 0
     mac: str = ""
     error: str = ""
+    parked: bool = False  # left in the ROM bootloader: not running firmware until woken or flashed
 
     @property
     def kind(self) -> Optional[str]:
@@ -231,7 +234,26 @@ def probe(port: str, baud: int = 921600, on_line=lambda s: None) -> ProbeResult:
         res.flash_bytes = int(m.group(1)) * (MiB if m.group(2) == "M" else 1024)
     if not res.flash_bytes:
         res.error = "Chip answered but did not report a flash size"
+        return res
+    res.parked = True
+    # The controller keeps its USB power through a reboot, so don't leave it stuck in the bootloader: a
+    # parked chip runs no firmware - no screen, no BLE, no pairing - until it's power-cycled. Flashing
+    # later resets it back into the bootloader by itself.
+    if res.kind == Kind.CTRL:
+        try:
+            wake(port)
+            res.parked = False
+        except EsptoolError as e:
+            on_line(f"could not reboot {port}: {e}")
     return res
+
+
+def wake(port: str) -> None:
+    """Reboot a chip that's parked in the ROM bootloader into its firmware (no reset into download mode
+    first). The robot's firmware powers the robot off when it boots without the button held, so after
+    waking a robot its port disappears until you turn it on."""
+    run_esptool(_base_args(port, 115200) + ["--before", "no_reset", "--after", "hard_reset",
+                                            "--connect-attempts", "2", "chip_id"])
 
 
 # ---------------------------------------------------------------------------------------------
