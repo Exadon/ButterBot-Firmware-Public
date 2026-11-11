@@ -190,6 +190,10 @@ class DeviceSlot(tk.Frame):
         self.probe_btn.pack(side="left", padx=(6, 0))
         self.status_btn = app.button(row, "Status", lambda: app.run_status(self), small=True)
         self.status_btn.pack(side="left", padx=(6, 0))
+        self.wake_btn = app.button(row, "Wake", lambda: app.run_wake(self), small=True)
+        self.wake_btn.pack(side="left", padx=(6, 0))
+        self.parked_lbl = tk.Label(self, text="⏸ PARKED IN BOOTLOADER - not running, can't pair. Beam or hit Wake.",
+                                   bg=PANEL, fg=WARN, anchor="w", font=("Segoe UI Semibold", 8))
 
         self.chip_lbl = tk.Label(self, text="No board identified yet", bg=PANEL, fg=DIM, anchor="w",
                                  font=("Segoe UI", 9))
@@ -427,6 +431,12 @@ class DeviceSlot(tk.Frame):
             self.probe = None
             self.chip_lbl.configure(text="Port changed - probe to identify the board", fg=DIM)
 
+    def show_parked(self, on: bool):
+        if on and not self.parked_lbl.winfo_ismapped():
+            self.parked_lbl.pack(fill="x", padx=14, after=self.chip_lbl)
+        elif not on:
+            self.parked_lbl.pack_forget()
+
     def show_probe(self, r: core.ProbeResult):
         self.probe = r
         if r.error:
@@ -527,6 +537,7 @@ class App:
         for s in self.slots.values():
             s.refresh_release()
         root.protocol("WM_DELETE_WINDOW", self._close)
+        self.parked: set[str] = set()
 
     # --- widgets ----------------------------------------------------------------------------
     def _style(self):
@@ -598,7 +609,7 @@ class App:
         for b in (self.scan_btn, self.both_btn):
             b.configure(state=state)
         for s in self.slots.values():
-            for b in (s.go_btn, s.probe_btn, s.status_btn, s.browse_btn):
+            for b in (s.go_btn, s.probe_btn, s.status_btn, s.wake_btn, s.browse_btn):
                 b.configure(state=state)
 
     def job(self, name: str, fn):
@@ -648,9 +659,13 @@ class App:
                           f"-> {Kind.LABEL.get(r.kind or '', 'unknown')}", "hi")
                 if r.kind in self.slots:
                     slot = self.slots[r.kind]
-                    self.ui(lambda s=slot, r=r: (s.select_port(r.port), s.show_probe(r)))
+                    self.ui(lambda s=slot, r=r: (s.select_port(r.port), self._note_probe(r), s.show_probe(r)))
+                else:
+                    self.ui(lambda r=r: self._note_probe(r))
             self.ui(lambda: self.headline.configure(
-                text="Scan complete. Boards are parked in bootloader mode - pick payloads and beam.", fg=DIM))
+                text=("Scan complete. The robot is parked in bootloader mode (it won't pair) until you beam "
+                      "or hit Wake." if self.parked else "Scan complete - pick payloads and beam."),
+                fg=WARN if self.parked else DIM))
         self.job("Scan", work)
 
     # --- themed dialogs (replace tkinter.messagebox) ------------------------------------------------
@@ -679,6 +694,10 @@ class App:
             return
         if self.port_in_use(port):
             return
+        if port in self.parked:
+            self.info(f"{port} is parked in bootloader mode, so its firmware isn't running and there's no status "
+                      "to read. Hit Wake (or flash it) first.", "Board is parked")
+            return
         slot.chip_lbl.configure(text=f"Listening on {port} for a status line…", fg=DIM)
 
         def work():
@@ -703,8 +722,55 @@ class App:
             r = core.probe(port, self.cfg["baud"], on_line=lambda s: None)
             self.tlog(f"{port}: " + (r.error or f"{r.chip}, {r.flash_bytes // core.MiB} MB flash"),
                       "bad" if r.error else "hi")
-            self.ui(lambda: slot.show_probe(r))
+            self.ui(lambda: (self._note_probe(r), slot.show_probe(r)))
         self.job("Probe", work)
+
+    # --- parked boards ----------------------------------------------------------------------
+    # A probe or backup leaves the robot in the ROM bootloader so it doesn't power itself off. While
+    # parked it runs no firmware: no face, no BLE, so the controller can't pair with it. Track those
+    # ports so the user can see it, wake them, and so closing the app never leaves one stranded.
+    def _set_parked(self, port: str, on: bool):
+        (self.parked.add if on else self.parked.discard)(port)
+        for s in self.slots.values():
+            s.show_parked(s.port() in self.parked)
+
+    def _note_probe(self, r: core.ProbeResult):
+        if not r.error:
+            self._set_parked(r.port, r.parked)
+            if r.parked:
+                self.log(f"{r.port} is parked in bootloader mode - it won't run (or pair) until you flash it "
+                         "or hit Wake.", "warn")
+
+    def run_wake(self, slot: DeviceSlot):
+        port = slot.port()
+        if not port:
+            self.info("Pick a port first (or hit Scan dimensions).", "Which board?")
+            return
+        if self.port_in_use(port):
+            return
+        bot = slot.kind == Kind.BOT
+
+        def work():
+            try:
+                core.wake(port)
+            except core.EsptoolError as e:
+                self.tlog(f"{port}: couldn't wake it ({e}). If it's already running, there's nothing to do; "
+                          "otherwise unplug it and power-cycle it.", "warn")
+                self.ui(lambda: self._set_parked(port, False))
+                return
+            self.tlog(f"{port}: rebooted into its firmware." +
+                      (" The robot powers itself off when it boots like this - press its power button "
+                       "to turn it on." if bot else ""), "hi")
+            self.ui(lambda: self._set_parked(port, False))
+        self.job("Wake", work)
+
+    def _wake_all_parked(self):
+        for port in sorted(self.parked):
+            try:
+                core.wake(port)
+            except core.EsptoolError:
+                pass
+        self.parked.clear()
 
     # --- update -----------------------------------------------------------------------------
     def run_update(self, slots: list[DeviceSlot]):
@@ -757,7 +823,7 @@ class App:
             # 1. identify the board (always re-probe: ports get renumbered, cables get swapped)
             status(quip("probe"), pct=0)
             r = core.probe(port, baud)
-            self.ui(lambda: s.show_probe(r))
+            self.ui(lambda: (self._note_probe(r), s.show_probe(r)))
             if r.error:
                 raise core.EsptoolError(f"Can't talk to {port}: {r.error}")
             if r.kind != s.kind:
@@ -782,6 +848,7 @@ class App:
             if backup_first:
                 status(quip("backup"))
                 self.tlog(f"[{name}] backing up {r.flash_bytes // core.MiB} MB…")
+                self.ui(lambda: self._set_parked(port, True))  # backup leaves it in the bootloader
                 bk = core.backup(port, r.flash_bytes, s.kind, baud, lambda l: None, prog(15, 35))
                 self.tlog(f"[{name}] backup saved: {bk}", "hi")
 
@@ -793,6 +860,7 @@ class App:
             status("Landed and verified. " + ("Press the power button to wake it." if s.kind == Kind.BOT else
                                               "It's rebooting."), GREEN, 100)
             self.tlog(f"[{name}] done ✔", "hi")
+            self.ui(lambda: self._set_parked(port, False))  # the write ends with a hard reset
             return True
         except (core.EsptoolError, core.ImageError, OSError, ValueError, RuntimeError) as e:
             status(f"✖ {e}", BAD)
@@ -891,6 +959,13 @@ class App:
                 "Flash in progress", "Quitting now can leave the board half-written. It stays recoverable over USB, "
                 "but you'd have to flash it again.", ok="Quit anyway", cancel="Keep flashing", kind="warning"):
             return
+        if self.parked and not self.busy:
+            ports = ", ".join(sorted(self.parked))
+            if self.confirm("Wake parked boards?",
+                            f"{ports} is still parked in bootloader mode: no firmware running, so no driving and "
+                            "no pairing. Reboot it now? (The robot then powers itself off - press its power "
+                            "button to turn it on.)", ok="Wake & quit", cancel="Just quit"):
+                self._wake_all_parked()
         self.root.destroy()
 
 
