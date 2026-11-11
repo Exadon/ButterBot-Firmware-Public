@@ -837,6 +837,8 @@ def _selftest(out: str):
     stubs = sorted(p.name for p in stub_dir.rglob("*esp32s3*")) if stub_dir.exists() else []
     lines.append(f"esp32s3 stubs: {stubs or 'MISSING'}")
     lines.append(f"ports: {[p.device for p in core.list_ports()]}")
+    lines.append(f"fork builds: bot={core.find_fork_build('bot')} ctrl={core.find_fork_build('ctrl')}")
+    lines.append(f"ctrl repos: {core.repo_choices(core.load_config(), 'ctrl')}")
     lines.append(f"probe COM250: {core.probe('COM250').error[:60]}")
     Path(out).write_text("\n".join(lines), encoding="utf-8")
 
