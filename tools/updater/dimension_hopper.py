@@ -22,6 +22,7 @@ from tkinter import filedialog, messagebox, ttk
 
 import hopper_core as core
 from guide_tab import GuideTab
+from diag_tab import DiagnosticsTab
 from hopper_core import Kind
 
 APP_TITLE = "Dimension Hopper"
@@ -451,6 +452,7 @@ class App:
         self.cfg = core.load_config()
         self.q: queue.Queue = queue.Queue()
         self.busy = False
+        self.monitor_port: str | None = None  # port held open by the Diagnostics tab
 
         root.title(f"{APP_TITLE} {VERSION}")
         root.configure(bg=BG)
@@ -479,6 +481,8 @@ class App:
         pal = dict(BG=BG, PANEL=PANEL, PANEL_HI=PANEL_HI, EDGE=EDGE, GREEN=GREEN, LIME=LIME, TEAL=TEAL, DIM=DIM,
                    TEXT=TEXT, WARN=WARN, BAD=BAD)
         nb.add(GuideTab(nb, pal, load_art), text="  Guide  ")
+        self.diag_tab = DiagnosticsTab(nb, pal, self)
+        nb.add(self.diag_tab, text="  Diagnostics  ")
 
         # devices
         mid = tk.Frame(flash, bg=BG)
@@ -623,7 +627,7 @@ class App:
 
     def run_scan(self):
         ports = self.refresh_ports()
-        esp = [p for p in ports if p.is_usb]
+        esp = [p for p in ports if p.is_usb and p.device != self.monitor_port]  # skip the Diagnostics port
         if not esp:
             self.headline.configure(text="No USB serial boards found. Is the robot ON? Hold its power button ~2 s.", fg=WARN)
             self.log("No USB serial devices found. The robot's USB only appears while it's powered on "
@@ -648,11 +652,19 @@ class App:
                 text="Scan complete. Boards are parked in bootloader mode - pick payloads and beam.", fg=DIM))
         self.job("Scan", work)
 
+    def port_in_use(self, port: str) -> bool:
+        if port and port == self.monitor_port:
+            messagebox.showinfo(APP_TITLE, f"{port} is open in the Diagnostics tab. Disconnect it there first.")
+            return True
+        return False
+
     def run_status(self, slot: DeviceSlot):
         """Reads the board's [BBSTAT] line without resetting it: battery, charging, link, firmware."""
         port = slot.port()
         if not port:
             messagebox.showinfo(APP_TITLE, "Pick a port first (or hit Scan dimensions).")
+            return
+        if self.port_in_use(port):
             return
         slot.chip_lbl.configure(text=f"Listening on {port} for a status line…", fg=DIM)
 
@@ -671,6 +683,8 @@ class App:
         if not port:
             messagebox.showinfo(APP_TITLE, "Pick a port first (or hit Scan dimensions).")
             return
+        if self.port_in_use(port):
+            return
 
         def work():
             r = core.probe(port, self.cfg["baud"], on_line=lambda s: None)
@@ -684,6 +698,8 @@ class App:
         chosen = [s for s in slots if s.port()]
         if not chosen:
             messagebox.showinfo(APP_TITLE, "No port picked. Hit 'Scan dimensions' first.")
+            return
+        if any(self.port_in_use(s.port()) for s in chosen):
             return
         if len({s.port() for s in chosen}) != len(chosen):
             messagebox.showerror(APP_TITLE, "Both slots point at the same port. That's how you get paradoxes.")
@@ -854,6 +870,7 @@ class App:
         dlg.grab_set()
 
     def _close(self):
+        self.diag_tab.shutdown()
         if self.busy and not messagebox.askyesno(APP_TITLE, "A flash is in progress. Quitting now can leave the "
                                                             "board half-written (it stays recoverable over USB).\n\nQuit anyway?"):
             return

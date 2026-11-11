@@ -640,3 +640,76 @@ def read_status(port: str, timeout_s: float = 12.0) -> DeviceStatus:
     res.error = ("No status line received. The board may be in bootloader mode (after a probe or backup - "
                  "power-cycle it), or running firmware without status reporting (stock / older fork builds).")
     return res
+
+
+# ---------------------------------------------------------------------------------------------
+# Diagnostics session (fork firmware streams "[BBDIAG] ..." while asked to with "diag on")
+# ---------------------------------------------------------------------------------------------
+
+DIAG_RE = re.compile(r"\[(BBDIAG|BBSTAT)\]((?:\s+\w+=\S+)+)")
+
+
+class DiagSession:
+    """
+    Holds a serial port open (without resetting the board), keeps the firmware's diagnostics stream alive by
+    re-sending "diag on" every few seconds, and hands every line to on_line(kind, fields, raw_line).
+    kind is "BBDIAG", "BBSTAT" or "" (any other console output). Stop with close().
+    """
+
+    KEEPALIVE_S = 5.0
+
+    def __init__(self, port: str, on_line: Callable[[str, dict, str], None], on_end: Callable[[str], None]):
+        self.port = port
+        self.on_line = on_line
+        self.on_end = on_end
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+
+    def start(self):
+        self._thread.start()
+
+    def close(self):
+        self._stop.set()
+
+    def _run(self):
+        import serial
+        s = serial.Serial()
+        s.port, s.baudrate, s.timeout = self.port, 115200, 0.1
+        s.dtr = False
+        s.rts = False
+        try:
+            s.open()
+        except serial.SerialException as e:
+            self.on_end(f"Couldn't open {self.port}: {e}")
+            return
+        reason = "Disconnected"
+        try:
+            last_keepalive = 0.0
+            buf = b""
+            while not self._stop.is_set():
+                if time.time() - last_keepalive >= self.KEEPALIVE_S:
+                    s.write(b"diag on\n")
+                    last_keepalive = time.time()
+                buf += s.read(1024)
+                *lines, buf = buf.split(b"\n")
+                for raw in lines:
+                    line = raw.decode("utf-8", "replace").strip()
+                    if not line:
+                        continue
+                    m = DIAG_RE.search(line)
+                    if m:
+                        fields = dict(kv.split("=", 1) for kv in m.group(2).split())
+                        self.on_line(m.group(1), fields, line)
+                    else:
+                        self.on_line("", {}, line)
+                if len(buf) > 4096:
+                    buf = buf[-1024:]
+            try:
+                s.write(b"diag off\n")
+            except serial.SerialException:
+                pass
+        except serial.SerialException as e:
+            reason = f"Connection lost: {e}"
+        finally:
+            s.close()
+            self.on_end(reason)

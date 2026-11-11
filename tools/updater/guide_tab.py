@@ -161,35 +161,80 @@ class GuideTab(tk.Frame):
         self.search_var.trace_add("write", lambda *a: self._fill_tree())
 
         tframe = tk.Frame(card, bg=p["PANEL"])
-        tframe.pack(fill="both", expand=True, padx=12, pady=(0, 12))
-        self.tree = ttk.Treeview(tframe, columns=("say", "does"), show="tree headings", style="Hop.Treeview")
-        self.tree.heading("#0", text="Action")
-        self.tree.heading("say", text="Say")
-        self.tree.heading("does", text="Reply")
-        self.tree.column("#0", width=190, stretch=False)
-        self.tree.column("say", width=230)
-        self.tree.column("does", width=260)
+        tframe.pack(fill="both", expand=True, padx=12, pady=(0, 6))
+        # Three tidy columns: a short action name, ONE example phrase (+ how many more), and the reply / note.
+        # Everything else for the selected row goes in the details box below, wrapped instead of cut off.
+        self.tree = ttk.Treeview(tframe, columns=("say", "info"), show="tree headings", style="Hop.Treeview")
+        self.tree.heading("#0", text="Action", anchor="w")
+        self.tree.heading("say", text="Say (example)", anchor="w")
+        self.tree.heading("info", text="Reply / note", anchor="w")
+        self.tree.column("#0", width=200, minwidth=160, stretch=False, anchor="w")
+        self.tree.column("say", width=250, minwidth=180, stretch=False, anchor="w")
+        self.tree.column("info", width=300, minwidth=200, stretch=True, anchor="w")
         sb = ttk.Scrollbar(tframe, command=self.tree.yview, style="Hop.Vertical.TScrollbar")
         self.tree.configure(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y")
         self.tree.pack(side="left", fill="both", expand=True)
-        self.tree.tag_configure("cat", foreground=p["LIME"])
+        self.tree.tag_configure("cat", foreground=p["LIME"], font=("Segoe UI Semibold", 9))
+        self.tree.tag_configure("odd", background=p["PANEL"])
+        self.tree.tag_configure("even", background="#111b14")
+        self.tree.bind("<<TreeviewSelect>>", lambda e: self._show_details())
+
+        # Details for the selected action: every phrase, and the full reply
+        det = tk.Frame(card, bg=p["PANEL_HI"], highlightbackground=p["EDGE"], highlightthickness=1)
+        det.pack(fill="x", padx=12, pady=(0, 12))
+        self.det_title = tk.Label(det, text="Select an action to see every phrase for it", bg=p["PANEL_HI"],
+                                  fg=p["GREEN"], font=("Segoe UI Semibold", 10), anchor="w")
+        self.det_title.pack(fill="x", padx=10, pady=(6, 2))
+        self.det_say = tk.Label(det, text="", bg=p["PANEL_HI"], fg=p["TEXT"], font=("Segoe UI", 9), anchor="w",
+                                justify="left", wraplength=700)
+        self.det_say.pack(fill="x", padx=10)
+        self.det_reply = tk.Label(det, text="", bg=p["PANEL_HI"], fg=p["LIME"], font=("Segoe UI", 9, "italic"),
+                                  anchor="w", justify="left", wraplength=700)
+        self.det_reply.pack(fill="x", padx=10, pady=(2, 8))
+        det.bind("<Configure>", lambda e: (self.det_say.configure(wraplength=e.width - 24),
+                                           self.det_reply.configure(wraplength=e.width - 24)))
+        self._rows: dict[str, dict] = {}
         self._fill_tree()
+
+    def _show_details(self):
+        sel = self.tree.selection()
+        e = self._rows.get(sel[0]) if sel else None
+        if e is None:
+            return
+        self.det_title.configure(text=f'{e["category"]} › {e["action"] if e["category"] != "Chat" else e["say"][0]}')
+        self.det_say.configure(text="Say:  " + "   ·   ".join(f"“{s}”" for s in e["say"]))
+        if e["reply"]:
+            self.det_reply.configure(text="Replies:  " + e["reply"])
+        elif e.get("note"):
+            self.det_reply.configure(text="Note:  " + e["note"])
+        else:
+            self.det_reply.configure(text="")
 
     def _fill_tree(self):
         q = self.search_var.get().strip().lower() if hasattr(self, "search_var") else ""
         self.tree.delete(*self.tree.get_children())
+        self._rows = {}
         cats: dict[str, str] = {}
+        n = 0
         for e in self.data["entries"]:
-            hay = " ".join([e["action"], e["reply"], *e["say"]]).lower()
+            hay = " ".join([e["action"], e["reply"], e.get("note", ""), *e["say"]]).lower()
             if q and q not in hay:
                 continue
             cat = e["category"]
             if cat not in cats:
                 cats[cat] = self.tree.insert("", "end", text=cat, open=bool(q), tags=("cat",))
-            say = " / ".join(e["say"])
-            label = e["action"] if e["category"] != "Chat" else "“" + e["say"][0] + "”"
-            self.tree.insert(cats[cat], "end", text=label, values=(say, e["reply"]))
+            more = len(e["say"]) - 1
+            example = e["say"][0] + (f"   (+{more} more)" if more > 0 else "")
+            if cat == "Chat":
+                label, example = e["say"][0], f"“{e['say'][0]}”"
+            else:
+                label = e["action"]
+            info = e["reply"] or e.get("note", "")
+            iid = self.tree.insert(cats[cat], "end", text=label, values=(example, info),
+                                   tags=("even" if n % 2 == 0 else "odd",))
+            self._rows[iid] = e
+            n += 1
         if not q:
             # keep the big Chat folder collapsed, open the rest
             for cat, iid in cats.items():
