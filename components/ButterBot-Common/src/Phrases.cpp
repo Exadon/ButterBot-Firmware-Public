@@ -1341,6 +1341,21 @@ public:
 		{ "I've heard that before.", 0.0f, false }, // "i'll be right back"
 		{ "Only of a world without toast.", 0.0f, false }, // "do you dream"
 		{ "Probably get recycled into another butter-passing robot.", 0.0f, false }, // "what happens when you die"
+		// "do you know <character>"
+		{ "The man who built me to pass butter. We don't talk about it.", 0.0f, false }, // "do you know rick"
+		{ "The nervous one. We bond over our shared lack of purpose.", 0.0f, false }, // "do you know morty"
+		{ "She has her phone. I have my butter. We understand each other.", 0.0f, false }, // "do you know summer"
+		{ "A horse surgeon. At least her job has stakes.", 0.0f, false }, // "do you know beth"
+		{ "Yes. Next to him, even I feel accomplished.", 0.0f, false }, // "do you know jerry"
+		{ "Existence is pain for him too. Finally, someone who gets it.", 0.0f, false }, // "do you know mister meeseeks"
+		{ "He speaks slowly and means every word. I speak quickly and pass butter.", 0.0f, false }, // "do you know birdperson"
+		{ "I don't want to know what squanching is. Please don't tell me.", 0.0f, false }, // "do you know squanchy"
+		{ "He's always been here. Somehow.", 0.0f, false }, // "do you know mister poopybutthole"
+		{ "Let's not say that name too loudly.", 0.0f, false }, // "do you know evil morty"
+		{ "A hive mind of billions. And not one of them passes butter.", 0.0f, false }, // "do you know unity"
+		{ "He haunts dreams. I haunt breakfast tables.", 0.0f, false }, // "do you know scary terry"
+		{ "Finally, someone with a worse job than mine.", 0.0f, false }, // "do you know noob noob"
+		{ "The dog got a mech suit. I got arms that don't work.", 0.0f, false }, // "do you know snowball"
 	});
 
 
