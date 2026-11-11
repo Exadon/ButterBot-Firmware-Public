@@ -70,6 +70,7 @@
 #include "FaceDet.h"
 #include "Util/ServiceLocator.h"
 #include "Audio/SoundEffects.h"
+#include <esp_heap_caps.h>
 
 DEFINE_LOG(Butterbot)
 
@@ -174,6 +175,7 @@ protected:
 
 		GPIOPeriph* gpio = registerPeriphery<GPIOPeriph>();
 
+		memMark("before I2S");
 		I2S* i2s_in = registerPeriphery<I2S>(I2S_NUM_0, HardwareConfiguration::getMicI2SConfig());
 		I2S* i2s_out = registerPeriphery<I2S>(I2S_NUM_1, HardwareConfiguration::getAudioI2SConfig());
 
@@ -182,6 +184,7 @@ protected:
 
 		ServiceLocator::SpeechGenInstance = std::make_unique<SpeechGen>();
 		ServiceLocator::SpeechAudioGenInstance = std::make_unique<SpeechAudioGen>();
+		memMark("speech gen");
 
 		Camera* cam = registerDevice<Camera>(HardwareConfiguration::getCameraConfig(static_cast<int>(i2c_main->getPort())), i2c_main, [](sensor_t* sensor){
 			sensor->set_hmirror(sensor, 0);
@@ -201,6 +204,7 @@ protected:
 			return;
 		}
 		cam->releaseFrame();
+		memMark("camera");
 
 		std::unique_ptr<I2CDevice> baseDevice = i2c_main->addDevice(HardwareConfiguration::getBaseBoardAddress());
 		if(baseDevice == nullptr){
@@ -222,6 +226,7 @@ protected:
 		onBatteryLevelEvent(battery->getLevel());
 
 		ServiceLocator::LEDControlInstance->startInit(); // After power button hold
+		memMark("baseboard+batt");
 
 		ServiceLocator::SettingsInstance = std::make_unique<Settings>();
 
@@ -261,19 +266,24 @@ protected:
 
 		GasConfigureService* gasService = registerService<GasConfigureService>();
 		gasService->setOwner(modules);
+		memMark("modules");
 
 		LEDModuleControl* ledModuleControl = registerService<LEDModuleControl>(ledService);
 
 		ServiceLocator::ObjDetInstance = std::make_unique<ObjDet>();
+		memMark("objdet");
 
 		FaceDet* faceDet = registerService<FaceDet>(cam);
+		memMark("facedet");
 
 		ServiceLocator::MicInputInstance = std::make_unique<MicInput>(i2s_in);
 		AudioFrontend* audioFrontend = registerService<AudioFrontend>();
+		memMark("audiofrontend");
 
 		ServiceLocator::LEDControlInstance->registerToAudio(audio);
 
 		AACAudioGenerator* aacGen = registerService<AACAudioGenerator>();
+		memMark("aac");
 
 		BM8563* rtc = registerDevice<BM8563>(i2c_main, HardwareConfiguration::getRTCAddress());
 		Time* timeService = registerService<Time>(rtc, /*internalStack=*/false);
@@ -282,11 +292,13 @@ protected:
 		auto gap = new BLE::GAP();
 		auto client = new BLE::Client(gap);
 		auto server = new BLE::Server(gap);
+		memMark("bluetooth");
 
 		srand(esp_random());
 
 		auto com = registerService<Com>(server, /*internalStack=*/false);
 		auto phone = registerService<Phone>(server, client);
+		memMark("com+phone");
 
 		com->OnConnStatus.bind(this, &Butterbot::onConnStatus);
 		com->OnCommand.bind(this, &Butterbot::onCommand);
@@ -295,6 +307,7 @@ protected:
 		server->start();
 
 		speakAndWait(audio, Phrase::Startup);
+		memMark("startup speech");
 
 		ServiceLocator::SC7A20Instance = std::make_unique<SC7A20>(i2c_main, HardwareConfiguration::getAcceleroAddress());
 		MotionService* motionService = registerService<MotionService>();
@@ -328,6 +341,11 @@ protected:
 		ServiceLocator::LEDControlInstance->startIdle();
 
 		startStatusReporter();
+		printf("[BBMEM] after init: internal free %u KB (largest block %u KB, lowest %u KB), PSRAM free %u KB\n",
+		       (unsigned) (heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
+		       (unsigned) (heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024),
+		       (unsigned) (heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL) / 1024),
+		       (unsigned) (heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024));
 	}
 
 	virtual void tick(float deltaTime) noexcept override{
@@ -387,8 +405,9 @@ private:
 				lastMotionMs = millis();
 			});
 		}
-		xTaskCreatePinnedToCore([](void* self){ static_cast<Butterbot*>(self)->diagTask(); }, "bbdiag", 4096, this, 1,
-		                        nullptr, tskNO_AFFINITY);
+		// Stack in PSRAM: internal RAM is scarce and Bluetooth needs what's left (it never writes flash, so that's safe).
+		xTaskCreatePinnedToCoreWithCaps([](void* self){ static_cast<Butterbot*>(self)->diagTask(); }, "bbdiag", 4096,
+		                                this, 1, nullptr, tskNO_AFFINITY, MALLOC_CAP_SPIRAM);
 	}
 
 	void diagTask(){
@@ -458,12 +477,22 @@ private:
 				case ChargingState::Full: charge = "full"; break;
 			}
 		}
-		printf("[BBSTAT] dev=bot fw=%s batt=%d charge=%s link=%s up=%llu\n",
+		printf("[BBSTAT] dev=bot fw=%s batt=%d charge=%s link=%s up=%llu ram=%u ram_min=%u\n",
 		       esp_app_get_description()->version,
 		       battery != nullptr ? static_cast<int>(battery->getPerc() + 0.5f) : -1,
 		       charge,
 		       com == nullptr ? "unknown" : (com->getStatus() == Com::ConnStatus::Connected ? "connected" : "disconnected"),
-		       millis() / 1000);
+		       millis() / 1000,
+		       // internal RAM in KB (now / lowest since boot): Bluetooth aborts the robot if this runs out
+		       (unsigned) (heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
+		       (unsigned) (heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL) / 1024));
+	}
+
+	// Fork: internal-RAM checkpoints during boot ([BBMEM] lines) - internal RAM running out crashes Bluetooth.
+	static void memMark(const char* what){
+		printf("[BBMEM] %-15s internal free %3u KB (largest %3u KB)\n", what,
+		       (unsigned) (heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
+		       (unsigned) (heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024));
 	}
 
 	static void speakAndWait(Audio* audio, Phrase phrase) {
