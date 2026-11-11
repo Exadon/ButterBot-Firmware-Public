@@ -89,6 +89,9 @@ protected:
 		ListenState::preallocate();
 
 		esp_log_level_set("*", ESP_LOG_WARN);
+		// Pairing is low-volume and hard to debug blind: keep the BLE connection story on the console.
+		esp_log_level_set("BLE_GAP", ESP_LOG_INFO);
+		esp_log_level_set("BLE_ConMan", ESP_LOG_INFO);
 
 		// Stack overflow otherwise - increase Threaded/AsyncEntity stack size if logging is needed
 		esp_log_level_set("Android", ESP_LOG_NONE);
