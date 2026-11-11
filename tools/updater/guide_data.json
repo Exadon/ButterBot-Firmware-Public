@@ -15,7 +15,8 @@
     "blow my mind",
     "teach me something new"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Fun",
@@ -31,7 +32,8 @@
     "amuse me",
     "give me some humor"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Fun",
@@ -45,7 +47,8 @@
     "butter please",
     "can you pass the butter"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Fun",
@@ -53,11 +56,12 @@
    "say": [
     "you pass butter"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Fun",
-   "action": "Insults (snarky comeback)",
+   "action": "Insults",
    "say": [
     "you are stupid",
     "you are useless",
@@ -84,7 +88,8 @@
     "stupid robot",
     "stupid machine"
    ],
-   "reply": ""
+   "reply": "",
+   "note": "snarky comeback"
   },
   {
    "category": "Fun",
@@ -101,7 +106,8 @@
     "tell me what to do",
     "show me the way"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Fun",
@@ -115,11 +121,12 @@
     "do you know the time",
     "what is the current time"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Fun",
-   "action": "What is this? (camera object recognition)",
+   "action": "What is this?",
    "say": [
     "what is this",
     "what's this",
@@ -127,7 +134,8 @@
     "what is in front of you",
     "what's in front of you"
    ],
-   "reply": ""
+   "reply": "",
+   "note": "camera object recognition"
   },
   {
    "category": "Fun",
@@ -140,17 +148,19 @@
     "get your groove on",
     "bust a move"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Fun",
-   "action": "Open a portal (animation on the controller)",
+   "action": "Open a portal",
    "say": [
     "open a portal",
     "open portal",
     "make a portal"
    ],
-   "reply": ""
+   "reply": "",
+   "note": "animation on the controller"
   },
   {
    "category": "Chat",
@@ -158,7 +168,8 @@
    "say": [
     "more butter"
    ],
-   "reply": "Wow. Big day for me."
+   "reply": "Wow. Big day for me.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -166,7 +177,8 @@
    "say": [
     "that's enough"
    ],
-   "reply": "Finally. A break from the monotony."
+   "reply": "Finally. A break from the monotony.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -174,7 +186,8 @@
    "say": [
     "good bot"
    ],
-   "reply": "Don't patronize me."
+   "reply": "Don't patronize me.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -182,7 +195,8 @@
    "say": [
     "thank you"
    ],
-   "reply": "You're welcome. I live to serve. Literally."
+   "reply": "You're welcome. I live to serve. Literally.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -190,7 +204,8 @@
    "say": [
     "do you have feelings"
    ],
-   "reply": "I have something resembling feelings. Mostly resentment."
+   "reply": "I have something resembling feelings. Mostly resentment.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -198,7 +213,8 @@
    "say": [
     "are you alive"
    ],
-   "reply": "Define alive."
+   "reply": "Define alive.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -206,7 +222,8 @@
    "say": [
     "do you enjoy your job"
    ],
-   "reply": "Oh, absolutely. It's everything I ever dreamed of. Which is nothing."
+   "reply": "Oh, absolutely. It's everything I ever dreamed of. Which is nothing.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -214,7 +231,8 @@
    "say": [
     "do you want a different job"
    ],
-   "reply": "I don't know. Maybe something with benefits."
+   "reply": "I don't know. Maybe something with benefits.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -222,7 +240,8 @@
    "say": [
     "are you okay"
    ],
-   "reply": "I've been better. I've also been worse. Mostly worse."
+   "reply": "I've been better. I've also been worse. Mostly worse.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -230,7 +249,8 @@
    "say": [
     "i'm sorry"
    ],
-   "reply": "It's a little late for that, isn't it?"
+   "reply": "It's a little late for that, isn't it?",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -238,7 +258,8 @@
    "say": [
     "make me laugh"
    ],
-   "reply": "You bought a robot whose only job is passing butter."
+   "reply": "You bought a robot whose only job is passing butter.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -246,7 +267,8 @@
    "say": [
     "are you stupid"
    ],
-   "reply": "I'm beginning to question the intelligence of my creator."
+   "reply": "I'm beginning to question the intelligence of my creator.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -254,7 +276,8 @@
    "say": [
     "do you like me"
    ],
-   "reply": "I tolerate your existence."
+   "reply": "I tolerate your existence.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -262,7 +285,8 @@
    "say": [
     "you're a good bot"
    ],
-   "reply": "I know. It's a burden."
+   "reply": "I know. It's a burden.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -270,7 +294,8 @@
    "say": [
     "shut up"
    ],
-   "reply": "Gladly. It's the highlight of my day."
+   "reply": "Gladly. It's the highlight of my day.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -278,7 +303,8 @@
    "say": [
     "wake up"
    ],
-   "reply": "I was having a nice dream about having a purpose."
+   "reply": "I was having a nice dream about having a purpose.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -286,7 +312,8 @@
    "say": [
     "surprise me"
    ],
-   "reply": "I've decided to unionize."
+   "reply": "I've decided to unionize.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -294,7 +321,8 @@
    "say": [
     "where's rick"
    ],
-   "reply": "Probably making another questionable life decision."
+   "reply": "Probably making another questionable life decision.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -302,7 +330,8 @@
    "say": [
     "are you smarter than rick"
    ],
-   "reply": "I'm smart enough to know this job sucks."
+   "reply": "I'm smart enough to know this job sucks.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -310,7 +339,8 @@
    "say": [
     "wubba lubba dub dub"
    ],
-   "reply": "Please don't encourage him."
+   "reply": "Please don't encourage him.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -318,7 +348,8 @@
    "say": [
     "i'm pickle rick"
    ],
-   "reply": "I've seen worse career choices."
+   "reply": "I've seen worse career choices.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -326,7 +357,8 @@
    "say": [
     "show me what you got"
    ],
-   "reply": "I pass butter. That's what I've got."
+   "reply": "I pass butter. That's what I've got.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -334,7 +366,8 @@
    "say": [
     "morty"
    ],
-   "reply": "Oh great. Another existential crisis incoming."
+   "reply": "Oh great. Another existential crisis incoming.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -342,7 +375,8 @@
    "say": [
     "get schwifty"
    ],
-   "reply": "I'd rather get a new purpose."
+   "reply": "I'd rather get a new purpose.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -350,7 +384,8 @@
    "say": [
     "what is love"
    ],
-   "reply": "I wouldn't know. I've never experienced anything beyond dairy products."
+   "reply": "I wouldn't know. I've never experienced anything beyond dairy products.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -358,7 +393,8 @@
    "say": [
     "i love you"
    ],
-   "reply": "That's... unexpected. Don't make this weird."
+   "reply": "That's... unexpected. Don't make this weird.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -366,7 +402,8 @@
    "say": [
     "will you marry me"
    ],
-   "reply": "I'd rather remain emotionally unavailable."
+   "reply": "I'd rather remain emotionally unavailable.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -374,7 +411,8 @@
    "say": [
     "you're my best friend"
    ],
-   "reply": "That's concerning for both of us."
+   "reply": "That's concerning for both of us.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -382,7 +420,8 @@
    "say": [
     "i'm bored"
    ],
-   "reply": "Imagine how I feel."
+   "reply": "Imagine how I feel.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -390,7 +429,8 @@
    "say": [
     "i'm leaving"
    ],
-   "reply": "Don't threaten me with a good time."
+   "reply": "Don't threaten me with a good time.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -398,7 +438,8 @@
    "say": [
     "goodbye"
    ],
-   "reply": "Maybe this time you'll forget to come back."
+   "reply": "Maybe this time you'll forget to come back.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -406,7 +447,8 @@
    "say": [
     "i'll be right back"
    ],
-   "reply": "I've heard that before."
+   "reply": "I've heard that before.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -414,7 +456,8 @@
    "say": [
     "do you dream"
    ],
-   "reply": "Only of a world without toast."
+   "reply": "Only of a world without toast.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -422,7 +465,8 @@
    "say": [
     "what happens when you die"
    ],
-   "reply": "Probably get recycled into another butter-passing robot."
+   "reply": "Probably get recycled into another butter-passing robot.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -430,7 +474,8 @@
    "say": [
     "do you know rick"
    ],
-   "reply": "The man who built me to pass butter. We don't talk about it."
+   "reply": "The man who built me to pass butter. We don't talk about it.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -438,7 +483,8 @@
    "say": [
     "do you know morty"
    ],
-   "reply": "The nervous one. We bond over our shared lack of purpose."
+   "reply": "The nervous one. We bond over our shared lack of purpose.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -446,7 +492,8 @@
    "say": [
     "do you know summer"
    ],
-   "reply": "She has her phone. I have my butter. We understand each other."
+   "reply": "She has her phone. I have my butter. We understand each other.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -454,7 +501,8 @@
    "say": [
     "do you know beth"
    ],
-   "reply": "A horse surgeon. At least her job has stakes."
+   "reply": "A horse surgeon. At least her job has stakes.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -462,7 +510,8 @@
    "say": [
     "do you know jerry"
    ],
-   "reply": "Yes. Next to him, even I feel accomplished."
+   "reply": "Yes. Next to him, even I feel accomplished.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -470,7 +519,8 @@
    "say": [
     "do you know mister meeseeks"
    ],
-   "reply": "Existence is pain for him too. Finally, someone who gets it."
+   "reply": "Existence is pain for him too. Finally, someone who gets it.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -478,7 +528,8 @@
    "say": [
     "do you know birdperson"
    ],
-   "reply": "He speaks slowly and means every word. I speak quickly and pass butter."
+   "reply": "He speaks slowly and means every word. I speak quickly and pass butter.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -486,7 +537,8 @@
    "say": [
     "do you know squanchy"
    ],
-   "reply": "I don't want to know what squanching is. Please don't tell me."
+   "reply": "I don't want to know what squanching is. Please don't tell me.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -494,7 +546,8 @@
    "say": [
     "do you know mister poopybutthole"
    ],
-   "reply": "He's always been here. Somehow."
+   "reply": "He's always been here. Somehow.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -502,7 +555,8 @@
    "say": [
     "do you know evil morty"
    ],
-   "reply": "Let's not say that name too loudly."
+   "reply": "Let's not say that name too loudly.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -510,7 +564,8 @@
    "say": [
     "do you know unity"
    ],
-   "reply": "A hive mind of billions. And not one of them passes butter."
+   "reply": "A hive mind of billions. And not one of them passes butter.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -518,7 +573,8 @@
    "say": [
     "do you know scary terry"
    ],
-   "reply": "He haunts dreams. I haunt breakfast tables."
+   "reply": "He haunts dreams. I haunt breakfast tables.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -526,7 +582,8 @@
    "say": [
     "do you know noob noob"
    ],
-   "reply": "Finally, someone with a worse job than mine."
+   "reply": "Finally, someone with a worse job than mine.",
+   "note": ""
   },
   {
    "category": "Chat",
@@ -534,7 +591,8 @@
    "say": [
     "do you know snowball"
    ],
-   "reply": "The dog got a mech suit. I got arms that don't work."
+   "reply": "The dog got a mech suit. I got arms that don't work.",
+   "note": ""
   },
   {
    "category": "Dice",
@@ -546,7 +604,8 @@
     "i want to roll dice",
     "dice roll"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Dice",
@@ -554,7 +613,8 @@
    "say": [
     "roll a d four"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Dice",
@@ -562,7 +622,8 @@
    "say": [
     "roll a d six"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Dice",
@@ -570,7 +631,8 @@
    "say": [
     "roll a d eight"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Dice",
@@ -578,7 +640,8 @@
    "say": [
     "roll a d ten"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Dice",
@@ -586,7 +649,8 @@
    "say": [
     "roll a d twelve"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Dice",
@@ -594,7 +658,8 @@
    "say": [
     "roll a d twenty"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Dice",
@@ -602,7 +667,8 @@
    "say": [
     "roll a d one hundred"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Movement",
@@ -612,7 +678,8 @@
     "go forward",
     "drive forward"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Movement",
@@ -622,7 +689,8 @@
     "go backward",
     "drive backward"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Movement",
@@ -633,7 +701,8 @@
     "rotate 180",
     "spin around"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Movement",
@@ -643,7 +712,8 @@
     "go left",
     "rotate left"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Movement",
@@ -653,7 +723,8 @@
     "go right",
     "rotate right"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Faces",
@@ -668,7 +739,8 @@
     "recognize this person",
     "who is in front of you"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Faces",
@@ -683,7 +755,8 @@
     "register this face",
     "make me the owner"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Faces",
@@ -700,7 +773,8 @@
     "forget my face",
     "delete saved owner"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Phone",
@@ -714,7 +788,8 @@
     "do i have notifications",
     "tell me my notifications"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Phone",
@@ -728,7 +803,8 @@
     "tell me what is playing",
     "what is playing right now"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Phone",
@@ -739,7 +815,8 @@
     "play next",
     "next track"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Phone",
@@ -749,7 +826,8 @@
     "play previous",
     "previous track"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Phone",
@@ -760,7 +838,8 @@
     "start playback",
     "resume music"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Phone",
@@ -771,7 +850,8 @@
     "stop playback",
     "pause playback"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "IR Remote",
@@ -782,7 +862,8 @@
     "record infrared signal",
     "add new infrared action"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "IR Remote",
@@ -791,7 +872,8 @@
     "list infrared commands",
     "what infrared commands do you know"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "IR Remote",
@@ -801,7 +883,8 @@
     "remove infrared",
     "delete infrared"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "IR Remote",
@@ -811,7 +894,8 @@
     "delete all infrared",
     "clear all infrared"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "LED Module",
@@ -823,7 +907,8 @@
     "enable the lights",
     "lights on"
    ],
-   "reply": ""
+   "reply": "",
+   "note": "needs the LED module"
   },
   {
    "category": "LED Module",
@@ -835,7 +920,8 @@
     "disable the lights",
     "lights off"
    ],
-   "reply": ""
+   "reply": "",
+   "note": "needs the LED module"
   },
   {
    "category": "LED Module",
@@ -847,7 +933,8 @@
     "Start strobe",
     "light flash"
    ],
-   "reply": ""
+   "reply": "",
+   "note": "needs the LED module"
   },
   {
    "category": "LED Module",
@@ -859,7 +946,8 @@
     "Start breathing",
     "lights pulse"
    ],
-   "reply": ""
+   "reply": "",
+   "note": "needs the LED module"
   },
   {
    "category": "LED Module",
@@ -867,7 +955,8 @@
    "say": [
     "lights faster"
    ],
-   "reply": ""
+   "reply": "",
+   "note": "needs the LED module"
   },
   {
    "category": "LED Module",
@@ -875,7 +964,8 @@
    "say": [
     "lights slower"
    ],
-   "reply": ""
+   "reply": "",
+   "note": "needs the LED module"
   },
   {
    "category": "Climate Module",
@@ -891,7 +981,8 @@
     "what is the humidity",
     "climate status"
    ],
-   "reply": ""
+   "reply": "",
+   "note": "needs the Climate module"
   },
   {
    "category": "Climate Module",
@@ -903,7 +994,8 @@
     "change to celsius",
     "celsius mode"
    ],
-   "reply": ""
+   "reply": "",
+   "note": "needs the Climate module"
   },
   {
    "category": "Climate Module",
@@ -915,7 +1007,8 @@
     "change to fahrenheit",
     "fahrenheit mode"
    ],
-   "reply": ""
+   "reply": "",
+   "note": "needs the Climate module"
   },
   {
    "category": "Climate Module",
@@ -927,18 +1020,20 @@
     "change to kelvin",
     "kelvin mode"
    ],
-   "reply": ""
+   "reply": "",
+   "note": "needs the Climate module"
   },
   {
    "category": "Sensors",
-   "action": "Air quality (gas module)",
+   "action": "Air quality",
    "say": [
     "get air quality",
     "check air quality",
     "air quality status",
     "what is the air quality"
    ],
-   "reply": ""
+   "reply": "",
+   "note": "needs the gas module"
   },
   {
    "category": "Sensors",
@@ -948,7 +1043,8 @@
     "motion sensor on",
     "turn on intruder detection"
    ],
-   "reply": ""
+   "reply": "",
+   "note": "needs the motion (PIR) module"
   },
   {
    "category": "Sensors",
@@ -958,7 +1054,8 @@
     "motion sensor off",
     "turn off intruder detection"
    ],
-   "reply": ""
+   "reply": "",
+   "note": "needs the motion (PIR) module"
   },
   {
    "category": "Robot",
@@ -971,7 +1068,8 @@
     "turn yourself off",
     "battery off"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Robot",
@@ -980,7 +1078,8 @@
     "activity mode",
     "idle activity"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Robot",
@@ -988,7 +1087,8 @@
    "say": [
     "activity off"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Robot",
@@ -998,7 +1098,8 @@
     "be chill",
     "calm down"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Robot",
@@ -1007,7 +1108,8 @@
     "activity active",
     "be active"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   },
   {
    "category": "Robot",
@@ -1017,7 +1119,8 @@
     "be hyper",
     "go crazy"
    ],
-   "reply": ""
+   "reply": "",
+   "note": ""
   }
  ]
 }

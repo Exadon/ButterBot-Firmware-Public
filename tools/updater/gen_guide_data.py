@@ -18,11 +18,11 @@ SCENARIOS = {
     "Joke": ("Fun", "Tell a joke"),
     "PassTheButter": ("Fun", "Pass the butter"),
     "YouPassButter": ("Fun", "You pass butter"),
-    "Profanity": ("Fun", "Insults (snarky comeback)"),
+    "Profanity": ("Fun", "Insults", "snarky comeback"),
     "EightBall": ("Fun", "Magic eight ball"),
     "Dance": ("Fun", "Dance"),
-    "OpenPortal": ("Fun", "Open a portal (animation on the controller)"),
-    "WhatsThis": ("Fun", "What is this? (camera object recognition)"),
+    "OpenPortal": ("Fun", "Open a portal", "animation on the controller"),
+    "WhatsThis": ("Fun", "What is this?", "camera object recognition"),
     "CurrentTime": ("Fun", "Current time"),
     "DiceRoll": ("Dice", "Roll dice"),
     "VoiceControl": ("Movement", "Move"),
@@ -32,18 +32,18 @@ SCENARIOS = {
     "IR_list": ("IR Remote", "List IR commands"),
     "IR_forget": ("IR Remote", "Forget an IR command"),
     "IR_forgetAll": ("IR Remote", "Forget all IR commands"),
-    "IR_action": ("IR Remote", "Run a learned IR command"),
+    "IR_action": ("IR Remote", "Run a learned IR command", "say the name you taught it"),
     "LEDTurnOn": ("LED Module", "LED on"),
     "LEDTurnOff": ("LED Module", "LED off"),
     "LEDStrobe": ("LED Module", "LED strobe"),
     "LEDBreathe": ("LED Module", "LED breathe"),
     "LEDFaster": ("LED Module", "LED faster"),
     "LEDSlower": ("LED Module", "LED slower"),
-    "TempHumModule": ("Climate Module", "Temperature & humidity"),
+    "TempHumModule": ("Climate Module", "Temperature & humidity", "needs the Climate module"),
     "TempHumScaleCelsius": ("Climate Module", "Use Celsius"),
     "TempHumScaleFahrenheit": ("Climate Module", "Use Fahrenheit"),
     "TempHumScaleKelvin": ("Climate Module", "Use Kelvin"),
-    "GasModule": ("Sensors", "Air quality (gas module)"),
+    "GasModule": ("Sensors", "Air quality", "needs the gas module"),
     "IntruderDetectionOn": ("Sensors", "Intruder detection on"),
     "IntruderDetectionOff": ("Sensors", "Intruder detection off"),
     "PhoneListNotifs": ("Phone", "Read notifications"),
@@ -91,7 +91,8 @@ def main():
     groups = {}  # (category, label) -> {"say": [...], "reply": str}
     order = []
     for scenario, data, trigger in acts:
-        cat, label = SCENARIOS.get(scenario, ("Other", scenario))
+        cat, label, *note = SCENARIOS.get(scenario, ("Other", scenario))
+        note = note[0] if note else ""
         reply = ""
         if scenario == "Chat":
             m = re.search(r"\{\s*(\d+)\s*\}", data)
@@ -100,9 +101,13 @@ def main():
             label = trigger
         else:
             label = refine(scenario, data, label)
+            if not note and cat in ("LED Module", "Climate Module"):
+                note = "needs the " + cat.replace("Module", "module")
+            if not note and scenario == "IntruderDetectionOn" or scenario == "IntruderDetectionOff":
+                note = "needs the motion (PIR) module"
         key = (cat, label)
         if key not in groups:
-            groups[key] = {"category": cat, "action": label, "say": [], "reply": reply}
+            groups[key] = {"category": cat, "action": label, "say": [], "reply": reply, "note": note}
             order.append(key)
         if trigger not in groups[key]["say"]:
             groups[key]["say"].append(trigger)
