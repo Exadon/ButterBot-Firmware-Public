@@ -79,6 +79,8 @@ void BaseBoard::setMotors(int8_t left, int8_t right){
 	if(left != 0 || right != 0){
 		frontSettleUntil = millis() + FrontSettleMs;
 	}
+	diagMotorL = static_cast<int8_t>(-left);
+	diagMotorR = static_cast<int8_t>(-right);
 	registerState.motorLeft = left;
 	registerState.motorRight = right;
 	const bool scanning = registerState.proximityScanning && !isBottomSensorOn();
@@ -112,6 +114,7 @@ void BaseBoard::setMotorLeft(int8_t value){
 	if(value != 0){
 		frontSettleUntil = millis() + FrontSettleMs;
 	}
+	diagMotorL = static_cast<int8_t>(-value);
 	registerState.motorLeft = value;
 	const bool scanning = registerState.proximityScanning && !isBottomSensorOn();
 	regStateMutex.unlock();
@@ -142,6 +145,7 @@ void BaseBoard::setMotorRight(int8_t value){
 	if(value != 0){
 		frontSettleUntil = millis() + FrontSettleMs;
 	}
+	diagMotorR = static_cast<int8_t>(-value);
 	registerState.motorRight = value;
 	const bool scanning = registerState.proximityScanning && !isBottomSensorOn();
 	regStateMutex.unlock();
@@ -280,6 +284,7 @@ void BaseBoard::serviceFrontDebounce(){
 
 	frontPendingCovered = false;
 	frontReportedCovered = true;
+	diagFrontFiltered = 1;
 	printf("[BaseBoard][%llu] Front sensor covered (confirmed)\n", millis());
 	onProximityChange.broadcast(ProxSensor::Front, true);
 }
@@ -434,6 +439,10 @@ bool BaseBoard::isBottomSensorOn() const{
 }
 
 void BaseBoard::processProximityReading(ProxState front, ProxState bot){
+	// Raw readings for diagnostics too (state polls carry the full picture, not just changes)
+	if(front != ProxState::Unknown) diagFrontRaw = static_cast<int8_t>(front == ProxState::Covered ? 1 : 0);
+	if(bot != ProxState::Unknown) diagBottom = static_cast<int8_t>(bot == ProxState::Covered ? 1 : 0);
+
 	if(isFrontSensorOff()){
 		front = ProxState::Uncovered;
 	}
@@ -450,7 +459,14 @@ void BaseBoard::processProximityReading(ProxState front, ProxState bot){
 	onProximityReading.broadcast(front, bot);
 }
 
+BaseBoard::Diag BaseBoard::getDiag() const{
+	return { diagFrontRaw.load(), diagFrontFiltered.load(), diagBottom.load(), diagMotorL.load(), diagMotorR.load() };
+}
+
 void BaseBoard::processProximityChange(ProxSensor sensor, bool inThreshold){
+	// Raw state for diagnostics, before the user's sensor settings and the front filter
+	(sensor == ProxSensor::Front ? diagFrontRaw : diagBottom) = static_cast<int8_t>(inThreshold ? 1 : 0);
+
 	if(sensor == ProxSensor::Front && isFrontSensorOff()){
 		return;
 	}
@@ -482,6 +498,7 @@ void BaseBoard::processProximityChange(ProxSensor sensor, bool inThreshold){
 			return;
 		}
 		frontReportedCovered = false;
+		diagFrontFiltered = 0;
 	}
 
 	printf("[BaseBoard][%llu] %s sensor %s\n", millis(), sensor == ProxSensor::Front ? "Front" : "Bottom", inThreshold ? "covered" : "uncovered");

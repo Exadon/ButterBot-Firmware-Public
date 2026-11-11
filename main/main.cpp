@@ -3,6 +3,10 @@
 #include <nvs_flash.h>
 #include <esp_random.h>
 #include <esp_timer.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <atomic>
+#include <string>
 #include <esp_app_desc.h>
 #include <cstdlib>
 #include <iterator>
@@ -360,19 +364,84 @@ private:
 	 * charging and controller link. printf bypasses the log level, so it always appears.
 	 */
 	static constexpr uint64_t StatusIntervalMs = 5000;
-	esp_timer_handle_t statusTimer = nullptr;
+
+	/*
+	 * Diagnostics stream for Dimension Hopper's Diagnostics tab. Off by default; sending "diag on" over the
+	 * serial port turns it on for DiagHoldMs (the app re-sends it while connected), "diag off" stops it.
+	 * While on, a [BBDIAG] line with live readings is printed every DiagIntervalMs.
+	 * Runs in its own low-priority task (not an esp_timer callback) so slow UART output never delays timers.
+	 */
+	static constexpr uint64_t DiagIntervalMs = 200;
+	static constexpr uint64_t DiagHoldMs = 15000;
+	uint64_t diagUntil = 0;
+	std::atomic<uint8_t> lastMotion{ 0xFF };
+	std::atomic<uint64_t> lastMotionMs{ 0 };
 
 	void startStatusReporter(){
-		const esp_timer_create_args_t args = {
-			.callback = [](void* self){ static_cast<Butterbot*>(self)->printStatus(); },
-			.arg = this,
-			.dispatch_method = ESP_TIMER_TASK,
-			.name = "bbstat",
-			.skip_unhandled_events = true,
-		};
-		if(esp_timer_create(&args, &statusTimer) == ESP_OK){
-			esp_timer_start_periodic(statusTimer, StatusIntervalMs * 1000);
+		if(MotionService* motion = getService<MotionService>()){
+			motion->onMotion.bind(this, [this](MotionType type){
+				lastMotion = static_cast<uint8_t>(type);
+				lastMotionMs = millis();
+			});
 		}
+		xTaskCreatePinnedToCore([](void* self){ static_cast<Butterbot*>(self)->diagTask(); }, "bbdiag", 4096, this, 1,
+		                        nullptr, tskNO_AFFINITY);
+	}
+
+	void diagTask(){
+		// Console stdin: never block the task waiting for input
+		const int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
+		fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
+
+		std::string line;
+		uint64_t nextStatus = millis() + StatusIntervalMs;
+		uint64_t nextDiag = 0;
+		for(;;){
+			char buf[32];
+			const int n = read(STDIN_FILENO, buf, sizeof(buf));
+			for(int i = 0; i < n; ++i){
+				if(buf[i] == '\n' || buf[i] == '\r'){
+					if(line == "diag on") diagUntil = millis() + DiagHoldMs;
+					else if(line == "diag off") diagUntil = 0;
+					line.clear();
+				}else if(line.size() < 32){
+					line += buf[i];
+				}
+			}
+
+			const uint64_t now = millis();
+			if(now >= nextStatus){
+				nextStatus = now + StatusIntervalMs;
+				printStatus();
+			}
+			if(now < diagUntil && now >= nextDiag){
+				nextDiag = now + DiagIntervalMs;
+				printDiag();
+			}
+			vTaskDelay(pdMS_TO_TICKS(50));
+		}
+	}
+
+	void printDiag() const{
+		const BaseBoard* base = getService<BaseBoard>();
+		const BBStateMachine* sm = getService<BBStateMachine>();
+		const Battery* battery = getService<Battery>();
+		const Com* com = getService<Com>();
+		BaseBoard::Diag d{};
+		if(base != nullptr){
+			d = base->getDiag();
+		}
+		static constexpr const char* MotionNames[] = { "fall", "upsidedown", "pickup", "shake" };
+		const uint8_t motion = lastMotion.load();
+		const State* state = sm != nullptr ? sm->getActiveState() : nullptr;
+		printf("[BBDIAG] dev=bot state=%s front_raw=%d front=%d bottom=%d motor_l=%d motor_r=%d btn=%d batt=%d "
+		       "link=%d motion=%s motion_age=%llu\n",
+		       state != nullptr ? state->name() : "none",
+		       d.frontRaw, d.frontFiltered, d.bottom, d.motorLeft, d.motorRight, pressed ? 1 : 0,
+		       battery != nullptr ? static_cast<int>(battery->getPerc() + 0.5f) : -1,
+		       com != nullptr && com->getStatus() == Com::ConnStatus::Connected ? 1 : 0,
+		       motion < std::size(MotionNames) ? MotionNames[motion] : "none",
+		       motion < std::size(MotionNames) ? (millis() - lastMotionMs.load()) / 1000 : 0);
 	}
 
 	void printStatus() const{

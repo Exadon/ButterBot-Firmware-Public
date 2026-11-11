@@ -9,6 +9,7 @@
 
 class ListenState : public State {
 public:
+	const char* name() const override { return "listen"; }
     explicit ListenState(BBStateMachine* sm);
     virtual ~ListenState() override;
 

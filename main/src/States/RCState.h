@@ -8,6 +8,7 @@
 
 class RCState : public State {
 public:
+	const char* name() const override { return "rc"; }
 	RCState(BBStateMachine* sm);
 	virtual ~RCState() override;
 	virtual int64_t getDynamicTickInterval() const noexcept override;

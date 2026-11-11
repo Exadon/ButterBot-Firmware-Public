@@ -13,6 +13,7 @@
 
 class IdleState : public State {
 public:
+	const char* name() const override { return "idle"; }
 	explicit IdleState(BBStateMachine* sm);
 	~IdleState() override;
 

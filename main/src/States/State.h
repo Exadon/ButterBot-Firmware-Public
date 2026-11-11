@@ -30,6 +30,9 @@ public:
 	 */
 	virtual int64_t getDynamicTickInterval() const { return -1; }
 
+	/** Short name for diagnostics output (RTTI is disabled in this build). */
+	virtual const char* name() const { return "state"; }
+
 protected:
 	BBStateMachine* sm = nullptr;
 };

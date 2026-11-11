@@ -52,6 +52,16 @@ public:
 
 	ChargingState getChargingState();
 
+	/** Live sensor/motor snapshot for the diagnostics stream; safe to call from any thread. */
+	struct Diag {
+		int frontRaw = -1;      // last raw front event from the motor board: 1 covered, 0 clear, -1 none yet
+		int frontFiltered = 0;  // what the routines see after debounce / settle (1 = obstacle reported)
+		int bottom = -1;        // 1 floor detected, 0 no floor (lifted / table edge), -1 none yet
+		int motorLeft = 0;      // as commanded (-100..100), before the board's sign flip
+		int motorRight = 0;
+	};
+	Diag getDiag() const;
+
 	/**
 	 * Event in case of a Charge state change.
 	 */
@@ -147,6 +157,12 @@ private:
 	static constexpr uint32_t VoteSpacingMs = 30;
 
 	std::atomic<uint64_t> frontSettleUntil{ 0 };
+
+	std::atomic<int8_t> diagFrontRaw{ -1 };
+	std::atomic<int8_t> diagFrontFiltered{ 0 };
+	std::atomic<int8_t> diagBottom{ -1 };
+	std::atomic<int8_t> diagMotorL{ 0 };
+	std::atomic<int8_t> diagMotorR{ 0 };
 
 	bool frontPendingCovered = false;
 	uint64_t frontPendingDeadline = 0;
