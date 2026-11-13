@@ -20,6 +20,7 @@ from pathlib import Path
 from tkinter import ttk
 
 import brain
+import tooltip
 import hopper_core as core
 
 HELP = """HOW AI MODE WORKS
@@ -542,7 +543,7 @@ class AITab(tk.Frame):
         self.key_var = tk.StringVar()
         self._entry(self.claude_frame, self.key_var, show="•", width=34).grid(row=0, column=1, sticky="w", padx=6)
         self.app.button(self.claude_frame, "Save", self.save_key, small=True).grid(row=0, column=2, sticky="w")
-        self.app.button(self.claude_frame, "Get a key", lambda: webbrowser.open("https://console.anthropic.com/"),
+        self.app.button(self.claude_frame, "Get a key", lambda: _open_url("https://console.anthropic.com/"),
                         small=True).grid(row=0, column=3, sticky="w", padx=6)
         self._label(self.claude_frame, "Model").grid(row=1, column=0, sticky="w", pady=(4, 0))
         self.model_names = dict(brain.CLAUDE_MODELS)
@@ -558,7 +559,7 @@ class AITab(tk.Frame):
         self.ollama_box = ttk.Combobox(self.ollama_frame, textvariable=self.ollama_var, width=22, style="Hop.TCombobox")
         self.ollama_box.grid(row=0, column=1, sticky="w", padx=6)
         self.app.button(self.ollama_frame, "Check", self.check_ollama, small=True).grid(row=0, column=2, sticky="w")
-        self.app.button(self.ollama_frame, "Get Ollama", lambda: webbrowser.open("https://ollama.com/download"),
+        self.app.button(self.ollama_frame, "Get Ollama", lambda: _open_url("https://ollama.com/download"),
                         small=True).grid(row=0, column=3, sticky="w", padx=6)
 
         trow = tk.Frame(body, bg=p["PANEL"])
@@ -767,7 +768,7 @@ class AITab(tk.Frame):
     def toggle_brain(self):
         if self.server and self.server.running:
             self.server.stop()
-            self.brain_btn.configure(text="▶ Start AI conversations")
+            tooltip.relabel(self.brain_btn, "▶ Start AI conversations")
             self._show_state()
             return
         self.start_brain()
@@ -785,7 +786,7 @@ class AITab(tk.Frame):
             self._say(self.run_status, self.run_lamp, f"Couldn't start: {e} (is another Dimension Hopper running?)", "bad")
             self.server = None
             return
-        self.brain_btn.configure(text="■ Stop AI conversations")
+        tooltip.relabel(self.brain_btn, "■ Stop AI conversations")
         self._show_state()
         # If the robot is plugged in: make sure it's set up to use the brain (and has this PC's current address)
         if self.robot_ai_var.get():
@@ -841,6 +842,16 @@ class AITab(tk.Frame):
     def shutdown(self):
         if self.server and self.server.running:
             self.server.stop()
+
+
+def _open_url(url: str):
+    """Opens a link in the default browser. os.startfile is Windows' own "open this"; webbrowser can fail silently
+    inside the packaged .exe."""
+    import os
+    try:
+        os.startfile(url)
+    except OSError:
+        webbrowser.open(url)
 
 
 def _guide_path() -> Path:

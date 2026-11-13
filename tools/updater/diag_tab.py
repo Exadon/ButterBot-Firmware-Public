@@ -9,6 +9,7 @@ import tkinter as tk
 from tkinter import ttk
 
 import hopper_core as core
+import tooltip
 
 STALE_S = 2.0  # no [BBDIAG] for this long -> "waiting for data"
 
@@ -165,6 +166,9 @@ class DiagnosticsTab(tk.Frame):
             else:
                 b.bind("<ButtonPress-1>", lambda e, n=name: self._drive_start(n))
                 b.bind("<ButtonRelease-1>", lambda e: self._drive_stop())
+            tooltip.Tooltip(b, "Stop the motors." if name == "stop" else
+                            f"Hold to drive {'forward' if name == 'up' else 'backward' if name == 'down' else 'turning ' + name}"
+                            " (or use the arrow keys / WASD). Lets go = stops.")
             self.drive_btns[name] = b
 
         side = tk.Frame(box, bg=p["PANEL"])

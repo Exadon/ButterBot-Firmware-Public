@@ -163,6 +163,9 @@ private:
 
 	//MultiNet speech recognition buffer size
 	static constexpr int32_t MultinetDuration = 6000; //[ms] (fork: 4000 cut people off mid-command)
+public:
+	static inline int32_t diagMultinetDuration = 0; // fork diagnostics ("srtest dur=N"): 0 = MultinetDuration
+private:
 
 	static constexpr float MultinetDetThreshold = 0.35f;
 

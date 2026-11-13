@@ -454,6 +454,7 @@ private:
 					else if(line == "wifi clear") runFlashJob([]{ HomeWiFi::clear(); printWifi(); });
 					else if(line == "wifi test") testWifi();
 					else if(line == "wifi scan") scanWifi();
+					else if(line == "srtest" || line.rfind("srtest ", 0) == 0) srTest(line.c_str() + 6);
 					else if(line.rfind("wifi bench ", 0) == 0) benchWifi(line.c_str() + 11);
 					else if(line.rfind("brain ", 0) == 0) setBrain(line.c_str() + 6);
 					else if(line == "ai on" || line == "ai off") runFlashJob([on = line == "ai on"]{ HomeWiFi::saveAiEnabled(on); printWifi(); });
@@ -868,6 +869,70 @@ private:
 			delete ba;
 			vTaskDelete(nullptr);
 		}, "bbwifibench", 6144, ba, 3, nullptr, 0);
+	}
+
+	/*
+	 * Diagnostics: "srtest [wifi] [dur=<ms>]" loads the full offline recognizer the way a listen does and reports the
+	 * lowest internal RAM reached during the load. "wifi" runs a WiFi session first (like an AI listen would);
+	 * "dur" tries another MultiNet duration. One line: [BBSR] start= after_wifi= low_load= after_load= after_unload=
+	 */
+	struct SrTestArgs {
+		bool wifi;
+		int32_t dur;
+		Butterbot* bot;
+	};
+
+	void srTest(const char* args){
+		const BBStateMachine* sm = getService<BBStateMachine>();
+		const State* state = sm != nullptr ? sm->getActiveState() : nullptr;
+		if(state == nullptr || strcmp(state->name(), "idle") != 0){
+			printf("[BBSR] result=busy state=%s\n", state != nullptr ? state->name() : "none");
+			return;
+		}
+		if(wifiTesting.exchange(true)){
+			printf("[BBSR] result=busy state=testing\n");
+			return;
+		}
+		int dur = 0;
+		if(const char* d = strstr(args, "dur=")) dur = atoi(d + 4);
+		auto* sa = new SrTestArgs{ strstr(args, "wifi") != nullptr, dur, this };
+		xTaskCreatePinnedToCore([](void* arg){
+			auto* sa = static_cast<SrTestArgs*>(arg);
+			auto kb = [](size_t b){ return (unsigned) (b / 1024); };
+			const size_t start = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+			size_t afterWifi = start, largestAfterWifi = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+			if(sa->wifi){
+				HomeWiFi wifi;
+				wifi.start(HomeWiFi::load(), 8000);
+				wifi.stop();
+				vTaskDelay(pdMS_TO_TICKS(300)); // let deleted tasks be cleaned up
+				afterWifi = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+				largestAfterWifi = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+			}
+			AudioFrontend* afe = sa->bot->getService<AudioFrontend>();
+			if(afe == nullptr){
+				printf("[BBSR] result=error why=no_afe\n");
+			}else{
+				AudioFrontend::diagMultinetDuration = sa->dur;
+				heap_caps_monitor_local_minimum_free_size_start();
+				afe->setMode(AudioFrontend::Mode::Off);
+				afe->loadModel(true);
+				const size_t lowLoad = heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL);
+				const size_t afterLoad = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+				const size_t largestLoaded = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+				afe->unloadModel();
+				heap_caps_monitor_local_minimum_free_size_stop();
+				AudioFrontend::diagMultinetDuration = 0;
+				vTaskDelay(pdMS_TO_TICKS(300));
+				printf("[BBSR] result=ok wifi=%d dur=%ld start=%u after_wifi=%u largest_after_wifi=%u low_load=%u "
+				       "after_load=%u largest_loaded=%u after_unload=%u\n", sa->wifi ? 1 : 0,
+				       (long) (sa->dur > 0 ? sa->dur : 6000), kb(start), kb(afterWifi), kb(largestAfterWifi), kb(lowLoad),
+				       kb(afterLoad), kb(largestLoaded), kb(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)));
+			}
+			sa->bot->wifiTesting = false;
+			delete sa;
+			vTaskDelete(nullptr);
+		}, "bbsrtest", 6144, sa, 3, nullptr, 0);
 	}
 
 	// Fork: why the robot last started and how many times it has booted (Dimension Hopper's health readout).

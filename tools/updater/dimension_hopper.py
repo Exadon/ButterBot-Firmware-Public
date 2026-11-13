@@ -27,6 +27,7 @@ from console_tab import ConsoleTab
 from ai_tab import AITab
 from personalize_tab import PersonalizeTab
 from hop_dialog import HopDialog
+import tooltip
 from hopper_core import Kind
 
 APP_TITLE = "Dimension Hopper"
@@ -629,6 +630,7 @@ class App:
                       highlightthickness=1, highlightbackground=EDGE)
         b.bind("<Enter>", lambda e: b.configure(bg="#1d5a2c") if str(b["state"]) != "disabled" else None)
         b.bind("<Leave>", lambda e: b.configure(bg="#123a1d" if not small else PANEL_HI))
+        tooltip.attach(b, text)
         return b
 
     def _save_backup_pref(self):
@@ -1138,6 +1140,17 @@ def _dpi_aware():
             pass
 
 
+def tooltip_gaps() -> list[str]:
+    """Button labels in the source with no tooltip (empty in the packaged exe, which has no .py sources)."""
+    import re
+    labels = set()
+    for f in ("dimension_hopper.py", "ai_tab.py", "diag_tab.py", "console_tab.py", "personalize_tab.py"):
+        p = Path(__file__).with_name(f)
+        if p.exists():
+            labels |= set(re.findall(r'button\([^,]+, *"([^"]+)"', p.read_text(encoding="utf-8")))
+    return sorted(l for l in labels if l not in tooltip.TIPS)
+
+
 def _selftest(out: str):
     """Dev aid for the frozen exe (which has no console): checks the bundled esptool and writes a report."""
     import esptool
@@ -1152,6 +1165,7 @@ def _selftest(out: str):
     lines.append(f"guide: {len(GuideTab._load_data()['entries'])} voice actions; images "
                  f"{[n for n in ('bot_guide.png', 'controller_guide.png') if _asset(n).exists()]}")
     lines.append(f"probe COM250: {core.probe('COM250').error[:60]}")
+    lines.append(f"tooltips: {len(tooltip.TIPS)} entries, missing for {tooltip_gaps() or 'none'}")
     try:  # AI tab dependencies are imported lazily, so make sure the exe really bundles them
         import faster_whisper, ctranslate2, anthropic, keyring, brain  # noqa: E401
         lines.append(f"ai: faster_whisper {faster_whisper.__version__}, ctranslate2 {ctranslate2.__version__}, "

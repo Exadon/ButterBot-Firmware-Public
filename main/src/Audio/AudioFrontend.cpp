@@ -574,7 +574,7 @@ void AudioFrontend::loadModel(bool withRecognizer){
 	CMF_LOG(AudioFrontend, LogLevel::Info, "multinet:%s", mn_name);
 	multinet_handle = esp_mn_handle_from_name(mn_name);
 
-	multinet_data = multinet_handle->create(mn_name, MultinetDuration);
+	multinet_data = multinet_handle->create(mn_name, diagMultinetDuration > 0 ? diagMultinetDuration : MultinetDuration);
 	multinet_handle->set_det_threshold(multinet_data, MultinetDetThreshold);
 	MemMark::mark("sr: multinet");
 

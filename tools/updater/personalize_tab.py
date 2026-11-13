@@ -12,6 +12,7 @@ import tkinter as tk
 from tkinter import ttk
 
 import hopper_core as core
+import tooltip
 
 VOICES = (
     ("classic", "Classic", "The original ButterBot voice (factory default)"),
@@ -76,6 +77,7 @@ class PersonalizeTab(tk.Frame):
             b.grid(row=i // 2, column=(i % 2) * 2, sticky="w", padx=(0, 8), pady=3)
             d = tk.Label(grid, text=desc, bg=p["PANEL"], fg=p["DIM"], font=("Segoe UI", 8), anchor="w", width=40)
             d.grid(row=i // 2, column=(i % 2) * 2 + 1, sticky="w", padx=(0, 20))
+            tooltip.Tooltip(b, f"Switch the robot to the {name} voice (saved on it) and hear a sample line.")
             self.rows[key] = (b, d)
 
         bottom = tk.Frame(card, bg=p["PANEL"])
