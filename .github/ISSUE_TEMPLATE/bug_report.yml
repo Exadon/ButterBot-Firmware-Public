@@ -1,0 +1,39 @@
+name: Something isn't working
+description: A problem with the robot, the controller or Dimension Hopper
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks! Please check [Troubleshooting](https://github.com/Exadon/ButterBot-Firmware-Public/blob/master/tools/updater/README.md#troubleshooting) first.
+        **Don't paste WiFi passwords, API keys or your home address** - logs from Dimension Hopper don't contain passwords, but have a quick look before attaching one.
+  - type: dropdown
+    id: part
+    attributes:
+      label: Which part?
+      options: [Robot, Controller, Dimension Hopper, AI conversations, Not sure]
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+      description: If the robot said something, quote it.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen again
+      placeholder: "1. ...\n2. ..."
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Flash tab → Status on each board, and Dimension Hopper's version (window title)
+      placeholder: "robot v1.1.1-exadon.2, controller v1.1-exadon.1, Dimension Hopper 1.2.0"
+  - type: textarea
+    id: log
+    attributes:
+      label: Log (optional)
+      description: Console tab → Save log…, then drag the file here

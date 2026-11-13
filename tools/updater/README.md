@@ -12,6 +12,9 @@ Every button has a tooltip: hover over it to see what it does.
 ## Tabs
 
 ### Flash
+
+![Flash tab](../../docs/images/flash.png)
+
 - **Scan dimensions** finds the robot and the controller on USB and tells them apart (it listens for their status
   line first, and only probes boards that stay silent).
 - **Pick a payload per board:**
@@ -34,9 +37,15 @@ The robot only stays on while its power button was held at start-up, so after a 
 about 1 second).
 
 ### Guide
+
+![Guide tab](../../docs/images/guide.png)
+
 Every voice command and the controller's buttons, with pictures.
 
 ### Personalize
+
+![Personalize tab](../../docs/images/personalize.png)
+
 Settings that live on the robot. Right now: its **voice** - click one of the eight presets to switch to it and hear a
 sample. Classic is the stock voice.
 
@@ -50,6 +59,9 @@ The board's raw log with filters, a table of what the robot heard and matched, a
 **Save log…**.
 
 ### AI - real conversations
+
+![AI tab](../../docs/images/ai.png)
+
 Four steps, each with a lamp (NOT SET UP / TO DO / WORKING… / READY / PROBLEM). Steps 2-4 unlock once step 1 works.
 
 1. **Robot WiFi** - **Scan** lists the networks the robot can see (2.4 GHz only), pick yours, type the password,
@@ -71,6 +83,33 @@ thinking took. Every conversation is also logged to `%LOCALAPPDATA%\DimensionHop
 Privacy: your voice goes from the robot to this PC over your own network and is turned into text here; with Ollama the
 AI runs here too. Nothing is sent to the internet. The WiFi password goes to the robot over USB and, if you choose,
 into Windows Credential Manager - never into a plain file.
+
+## Troubleshooting
+
+**What the robot says when AI mode can't be used**
+
+| The robot says | What it means | What to do |
+|---|---|---|
+| "My brain is offline, so I'm using my backup circuits." | It couldn't reach Dimension Hopper on the PC. Usually the app is closed, stopped, or the PC is asleep. | Open Dimension Hopper and Start AI conversations. It won't try again for 10 minutes, so the next presses use the built-in commands. If the app *is* running, plug the robot in and press Start (this PC's address may have changed). |
+| "I can't find my WiFi network…" | The saved network isn't in range, or isn't 2.4 GHz. | Plug the robot in: AI tab → step 1 → **Scan**, pick the network, **Send to robot**. |
+| "My WiFi password doesn't work any more…" | The router rejected the password. | Step 1 → type the new password → **Send to robot** → **Test robot WiFi**. |
+| "I can't reach the WiFi right now…" | A hiccup while joining. | Ask again after 2 minutes. If it keeps happening, step 1 → **Test robot WiFi**. |
+
+With the robot plugged in, **Check robot** (step 1) also shows what went wrong the last time.
+
+**Other things**
+
+- **The robot isn't found / "port in use".** Switch the robot on (hold the button about 1 second) - its USB only works
+  while it's on. Only one program can use a port at a time: disconnect the Diagnostics or Console tab, or close other
+  serial tools.
+- **A flash failed part-way.** Nothing is lost - settings live separately. Press **BEAM IT** again (don't press the
+  robot's button while it flashes). If the robot no longer reports itself, pick its port by hand and flash again.
+- **Answers take long.** The table's *Upload / Hear / Think* columns show where the time goes. Upload depends on
+  the WiFi sharing the radio with Bluetooth (usually 1-5 s); Think is the AI model (2-3 s with a graphics card).
+- **The status line says this PC's address changed.** Plug the robot in and press Start. To stop it happening, give
+  the PC a reserved / fixed address in your router's app.
+- **Something else.** Open an issue on [GitHub](https://github.com/Exadon/ButterBot-Firmware-Public/issues) with the
+  firmware versions (Flash tab → Status) and, if you can, a saved log from the Console tab.
 
 ## Build the exe
 

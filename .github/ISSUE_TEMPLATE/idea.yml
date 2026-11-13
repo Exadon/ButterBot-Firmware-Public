@@ -1,0 +1,14 @@
+name: Idea or request
+description: Something ButterBot or Dimension Hopper should do
+labels: [idea]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why / how would you use it?

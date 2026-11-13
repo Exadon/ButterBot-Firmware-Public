@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Troubleshooting guide
+    url: https://github.com/Exadon/ButterBot-Firmware-Public/blob/master/tools/updater/README.md#troubleshooting
+    about: What the robot's messages mean and how to fix the common problems

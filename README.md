@@ -11,6 +11,8 @@ This fork is one of three pieces that work together:
 | **Controller firmware** | The handheld remote | [Exadon/ButterBotCtrl-Firmware-Public](https://github.com/Exadon/ButterBotCtrl-Firmware-Public) |
 | **Dimension Hopper** | A Windows app that updates both boards, sets them up and runs the AI "brain" | [tools/updater](tools/updater) in this repository |
 
+![Dimension Hopper's AI tab](docs/images/ai.png)
+
 ## Quick start
 
 1. Download `DimensionHopper.exe` from the [releases page](../../releases) (or build it, see [tools/updater](tools/updater)).
@@ -60,6 +62,11 @@ and Announcer (with echo). Chosen in Dimension Hopper's *Personalize* tab and sa
 A status line every 5 seconds (battery, charging, controller link, free memory, why it last restarted, boot count), a
 live diagnostics stream, and commands for driving, voices, WiFi setup, network scan, AI mode, pairing and memory/speed
 diagnostics. The protocol is plain text, so any serial terminal works too.
+
+## Problems and ideas
+
+See [Troubleshooting](tools/updater/README.md#troubleshooting) for what the robot's messages mean. For anything else,
+open an [issue](../../issues) - there's a short form that asks for what's needed.
 
 ## Installing a release
 
