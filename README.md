@@ -11,6 +11,12 @@ This fork is one of three pieces that work together:
 | **Controller firmware** | The handheld remote | [Exadon/ButterBotCtrl-Firmware-Public](https://github.com/Exadon/ButterBotCtrl-Firmware-Public) |
 | **Dimension Hopper** | A Windows app that updates both boards, sets them up and runs the AI "brain" | [tools/updater](tools/updater) in this repository |
 
+## See it in action
+
+| Talking to ButterBot (AI mode) | The controller |
+|---|---|
+| [![ButterBot answering questions in AI mode](https://img.youtube.com/vi/QA3H6BbMbJw/hqdefault.jpg)](https://www.youtube.com/shorts/QA3H6BbMbJw) | [![The controller's features](https://img.youtube.com/vi/ISTigiyBVUY/hqdefault.jpg)](https://www.youtube.com/shorts/ISTigiyBVUY) |
+
 ![Dimension Hopper's AI tab](docs/images/ai.png)
 
 ## Quick start
