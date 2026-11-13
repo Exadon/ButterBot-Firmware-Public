@@ -1165,6 +1165,10 @@ def _selftest(out: str):
     lines.append(f"guide: {len(GuideTab._load_data()['entries'])} voice actions; images "
                  f"{[n for n in ('bot_guide.png', 'controller_guide.png') if _asset(n).exists()]}")
     lines.append(f"probe COM250: {core.probe('COM250').error[:60]}")
+    cfg = core.load_config()
+    ok = core.save_config(cfg)
+    lines.append(f"settings: {core.CONFIG_PATH} keys={sorted(k for k in cfg if k.startswith('ai_') and 'pass' not in k)} "
+                 f"save={'ok' if ok else core.LAST_SAVE_ERROR}")
     lines.append(f"tooltips: {len(tooltip.TIPS)} entries, missing for {tooltip_gaps() or 'none'}")
     try:  # AI tab dependencies are imported lazily, so make sure the exe really bundles them
         import faster_whisper, ctranslate2, anthropic, keyring, brain  # noqa: E401

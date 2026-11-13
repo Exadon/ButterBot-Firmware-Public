@@ -44,7 +44,8 @@ TIPS = {
     "Get Ollama": "Open ollama.com in your browser to download Ollama (free, runs on this PC).",
     "Try it": "Send the typed message to the AI and show its reply - no robot needed.",
     "▶ Start AI conversations": "Start the brain on this PC. If the robot is plugged in, also set it up to use it.",
-    "■ Stop AI conversations": "Stop the brain. The robot will say its brain is offline and use its built-in commands.",
+    "■ Stop AI conversations": "Stop the brain. If the robot is plugged in, its AI is switched off too, so it simply uses "
+                               "its built-in commands.",
     "Browse…": "Pick a folder on this PC.",
     "Cancel": "Close without changing anything.",
     "Close": "Close this window.",

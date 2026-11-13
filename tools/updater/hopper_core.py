@@ -816,12 +816,23 @@ def load_config() -> dict:
     return cfg
 
 
-def save_config(cfg: dict):
+LAST_SAVE_ERROR = ""  # why the last save_config failed ("" = it worked); shown by the self-test
+
+
+def save_config(cfg: dict) -> bool:
+    """Writes the settings. Never raises (a failed save must not break the UI), but remembers why it failed."""
+    global LAST_SAVE_ERROR
     try:
+        text = json.dumps(cfg, indent=2, default=str)  # default=str: a stray non-JSON value can't block the save
         APP_DIR.mkdir(parents=True, exist_ok=True)
-        CONFIG_PATH.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
-    except OSError:
-        pass
+        tmp = CONFIG_PATH.with_suffix(".tmp")
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, CONFIG_PATH)  # atomic: a crash mid-write can't leave a half-written file
+        LAST_SAVE_ERROR = ""
+        return True
+    except Exception as e:  # noqa: BLE001
+        LAST_SAVE_ERROR = f"{type(e).__name__}: {e}"
+        return False
 
 
 def open_folder(path: Path):

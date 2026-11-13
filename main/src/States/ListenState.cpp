@@ -228,7 +228,8 @@ namespace {
 	 * offline recognizer right after a WiFi session (same listen) could run internal RAM to zero, after which WiFi
 	 * wouldn't start again until a reboot - so a failed AI listen just ends, and the next press is the offline one.
 	 */
-	constexpr uint32_t AiCooldownMs = 2 * 60 * 1000;
+	constexpr uint32_t AiCooldownMs = 2 * 60 * 1000;        // after a WiFi problem (worth retrying soon)
+	constexpr uint32_t BrainOffCooldownMs = 10 * 60 * 1000; // brain not there: usually the PC or the app is just off
 	uint32_t aiCooldownUntil = 0;
 
 	bool aiCoolingDown(){
@@ -397,20 +398,29 @@ void ListenState::startOffline(const Application* app){
 }
 
 // What the robot says when the brain can't be used: what's wrong, and whether it needs plugging into Dimension Hopper
+static bool brainProblem(const std::string& why){
+    // Nobody answering on the PC side - most often Dimension Hopper simply isn't running (stopped, closed, PC asleep)
+    return why == "brain_not_found" || why == "brain_unreachable" || why == "no_reply" || why == "empty_reply";
+}
+
+static uint32_t cooldownFor(const std::string& why){
+    return brainProblem(why) ? BrainOffCooldownMs : AiCooldownMs;
+}
+
+// What the robot says when the brain can't be used. Problems the owner must fix get a "plug me in"; the brain just
+// being off is normal and gets a calm one-liner.
 static const char* problemSentence(const std::string& why){
     if(why == "network_not_found" || why == "not_configured")
         return "I can't find my WiFi network. Plug me into Dimension Hopper to check my WiFi settings.";
     if(why == "wrong_password")
         return "My WiFi password doesn't work any more. Plug me into Dimension Hopper and send it again.";
-    if(why == "brain_not_found" || why == "brain_unreachable")
-        return "I can't find my brain. Check Dimension Hopper is running. If it is, plug me in and press Start.";
-    if(why == "timeout" || why == "failed")
-        return "I can't reach the WiFi right now. Ask me again, I'll use my backup circuits.";
-    return "My brain isn't answering. Ask me again, I'll use my backup circuits.";
+    if(brainProblem(why))
+        return "My brain is offline, so I'm using my backup circuits. Ask me again.";
+    return "I can't reach the WiFi right now. Ask me again, I'll use my backup circuits.";
 }
 
 void ListenState::fallBackToOffline(const Application* app, const char* why){
-    printf("[BBAI] event=offline why=%s cooldown_s=%u\n", why, (unsigned) (AiCooldownMs / 1000));
+    printf("[BBAI] event=offline why=%s cooldown_s=%u\n", why, (unsigned) (cooldownFor(why) / 1000));
     AudioFrontend* audioFrontend = app->getService<AudioFrontend>();
     if(audioFrontend != nullptr){
         audioFrontend->setMode(AudioFrontend::Mode::Off);
@@ -419,7 +429,7 @@ void ListenState::fallBackToOffline(const Application* app, const char* why){
     ai->cancel = true;
     ai->handled = true;
     HomeWiFi::setLastProblem(why);
-    aiCooldownUntil = millis() + AiCooldownMs;
+    aiCooldownUntil = millis() + cooldownFor(why);
     if(aiCooldownUntil == 0) aiCooldownUntil = 1;
     // Let the worker switch WiFi off before anything else needs the memory
     const uint32_t start = millis();
@@ -508,7 +518,7 @@ void ListenState::tick(float){
             timedOut = true; // the dtor plays the usual "didn't hear you" line
         }else{
             HomeWiFi::setLastProblem(r.error.c_str());
-            aiCooldownUntil = millis() + AiCooldownMs;
+            aiCooldownUntil = millis() + cooldownFor(r.error);
             if(aiCooldownUntil == 0) aiCooldownUntil = 1;
             if(Audio* audio = app->getService<Audio>()){
                 audio->play(ServiceLocator::SpeechAudioGenInstance.get(),

@@ -127,13 +127,18 @@ class AITab(tk.Frame):
         self.refresh_ports()
         self._refresh_thinking_state()
         self._set_gate(bool(self.cfg.get("ai_wifi_ok")))
+        if self.cfg.get("ai_wifi_ok"):
+            # Set up before: step 1 starts as READY (the robot keeps its WiFi), then gets re-checked if it's plugged in
+            ssid = self.cfg.get("ai_ssid", "")
+            self._say(self.wifi_status, self.wifi_lamp,
+                      f"Set up earlier{f' ({ssid})' if ssid else ''}. Plug the robot in to check it again.", "ok")
+        self.after(1200, self._quiet_robot_check)
         if self.cfg.get("ai_autostart") and self.cfg.get("ai_wifi_ok"):
-            self.after(800, self.start_brain)          # also checks the robot if it's plugged in
-        elif self.cfg.get("ai_wifi_ok"):
-            self.after(1500, self._quiet_robot_check)
+            self.after(800, self.start_brain)
 
     def _quiet_robot_check(self):
-        """App just opened and the robot may be plugged in: read its AI setting and last problem, no complaints if not."""
+        """App just opened. If the robot is plugged in: read its settings and, if it has WiFi saved, test it (join the
+        network, look for the brain) so step 1's READY means it works right now. Silent if no robot is there."""
         port = self.port_var.get().split(" ", 1)[0]
         if not port or not core.port_exists(port) or port in self.app.held_ports() or self.app.busy:
             return
@@ -142,11 +147,25 @@ class AITab(tk.Frame):
             r = core.console_command(port, "wifi", "BBWIFI", 4)
             if not r or core.port_problem(r, port) or "ai" not in r:
                 return  # not the robot on that port, switched off, or busy - stay quiet
+            configured = r.get("configured") == "1"
+            ssid = bytes.fromhex(r["ssid_hex"]).decode("utf-8", "replace") if r.get("ssid_hex", "-") != "-" else ""
 
-            def ui():
+            def show_settings():
                 self._set_ai_label(r.get("ai") == "on")
                 self._report_last_problem(r)
-            self.app.ui(ui)
+                if not configured:
+                    self._say(self.wifi_status, self.wifi_lamp, "The robot has no WiFi saved - fill in step 1 and "
+                              "Send to robot.", "warn")
+                    self._set_gate(False)
+                else:
+                    if ssid and not self.ssid_var.get().strip():
+                        self.ssid_var.set(ssid)
+                    self._say(self.wifi_status, self.wifi_lamp, f"Checking the robot's WiFi ({ssid})…", "busy")
+            self.app.ui(show_settings)
+            if configured:
+                self._push_brain_address(port)
+                t = core.console_command(port, "wifi test", "BBWIFI", timeout_s=25)
+                self._deliver(t, port, self._test_result)
         threading.Thread(target=work, daemon=True).start()
 
     # --- WiFi gate ------------------------------------------------------------------------------------
@@ -386,29 +405,6 @@ class AITab(tk.Frame):
     def test_wifi(self):
         self._say(self.wifi_status, self.wifi_lamp, "The robot is joining the WiFi (up to 15 s)…", "busy")
 
-        def done(r):
-            if r is None:
-                self._say(self.wifi_status, self.wifi_lamp, "No answer from the robot.", "bad")
-                return
-            res = r.get("result")
-            if res == "connected":
-                brain_ip = r.get("brain", "none")
-                rssi = int(r.get("rssi", "0") or 0)
-                signal = "strong" if rssi > -60 else ("ok" if rssi > -72 else "weak")
-                # WiFi itself is done either way; finding the brain is step 4's business
-                text = (f"Connected: robot at {r.get('ip')}, {signal} signal ({rssi} dBm), {r.get('ram')} KB RAM free. "
-                        + (f"It also found the brain on {brain_ip}." if brain_ip != "none" else "WiFi is done."))
-                self._say(self.wifi_status, self.wifi_lamp, text, "ok")
-                self._show_pc_ip(r.get("ip"))
-                self._set_gate(True)
-            elif res == "busy":
-                self._say(self.wifi_status, self.wifi_lamp, f"The robot is busy ({r.get('state')}). Try when it's idle.",
-                          "warn")
-            else:
-                why = {"network_not_found": "network not found (is it 2.4 GHz and in range?)",
-                       "wrong_password": "wrong password", "not_configured": "no WiFi saved yet - Send to robot first",
-                       "timeout": "timed out"}.get(r.get("why", ""), r.get("why", "failed"))
-                self._say(self.wifi_status, self.wifi_lamp, f"Couldn't connect: {why}.", "bad")
         port = self._robot_port()
         if not port:
             return
@@ -416,8 +412,32 @@ class AITab(tk.Frame):
         def work():
             self._push_brain_address(port)
             r = core.console_command(port, "wifi test", "BBWIFI", timeout_s=20)
-            self._deliver(r, port, done)
+            self._deliver(r, port, self._test_result)
         threading.Thread(target=work, daemon=True).start()
+
+    def _test_result(self, r):
+        if r is None:
+            self._say(self.wifi_status, self.wifi_lamp, "No answer from the robot.", "bad")
+            return
+        res = r.get("result")
+        if res == "connected":
+            brain_ip = r.get("brain", "none")
+            rssi = int(r.get("rssi", "0") or 0)
+            signal = "strong" if rssi > -60 else ("ok" if rssi > -72 else "weak")
+            # WiFi itself is done either way; finding the brain is step 4's business
+            text = (f"Connected: robot at {r.get('ip')}, {signal} signal ({rssi} dBm), {r.get('ram')} KB RAM free. "
+                    + (f"It also found the brain on {brain_ip}." if brain_ip != "none" else "WiFi is done."))
+            self._say(self.wifi_status, self.wifi_lamp, text, "ok")
+            self._show_pc_ip(r.get("ip"))
+            self._set_gate(True)
+        elif res == "busy":
+            self._say(self.wifi_status, self.wifi_lamp, f"The robot is busy ({r.get('state')}). Try when it's idle.",
+                      "warn")
+        else:
+            why = {"network_not_found": "network not found (is it 2.4 GHz and in range?)",
+                   "wrong_password": "wrong password", "not_configured": "no WiFi saved yet - Send to robot first",
+                   "timeout": "timed out"}.get(r.get("why", ""), r.get("why", "failed"))
+            self._say(self.wifi_status, self.wifi_lamp, f"Couldn't connect: {why}.", "bad")
 
     def check_robot(self):
         def done(r):
@@ -794,6 +814,9 @@ class AITab(tk.Frame):
             self.server.stop()
             tooltip.relabel(self.brain_btn, "▶ Start AI conversations")
             self._show_state()
+            # If the robot is plugged in, switch its AI off too, so it uses its built-in commands without complaining
+            # that its brain is offline. (Unplugged, it can't be told; it then says so once and pauses AI for 10 min.)
+            self.set_ai(False, quiet=True)
             return
         self.start_brain()
 
