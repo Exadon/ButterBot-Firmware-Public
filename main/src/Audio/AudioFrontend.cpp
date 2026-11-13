@@ -331,7 +331,8 @@ AudioFrontend::AudioFrontend(){
 	// RunBit starts cleared so the tasks block at their gate as soon as they start.
 
 	feedTask = std::make_unique<Threaded>([this](){ feedTaskFunc(); }, "AFE_feed", 1, 3 * 1024, 6, 1, true);
-	procTask = std::make_unique<Threaded>([this](){ procTaskFunc(); }, "AFE_proc", 1, 3 * 1024, 5, 1, true);
+	// Fork: 5 KB (was 3) so recognition results can be logged from this task without overflowing it.
+	procTask = std::make_unique<Threaded>([this](){ procTaskFunc(); }, "AFE_proc", 1, 5 * 1024, 5, 1, true);
 
 	feedTask->start();
 	procTask->start();
@@ -367,7 +368,8 @@ void AudioFrontend::setMode(Mode mode){
 		return;
 	}
 
-	if((previousMode == Mode::Speech || previousMode == Mode::Audio) && mode != Mode::Speech && mode != Mode::Audio){
+	const auto listening = [](Mode m){ return m == Mode::Speech || m == Mode::Audio || m == Mode::Record; };
+	if(listening(previousMode) && !listening(mode)){
 		if(ServiceLocator::LEDControlInstance){
 			ServiceLocator::LEDControlInstance->stopListen();
 		}
@@ -400,6 +402,12 @@ void AudioFrontend::setMode(Mode mode){
 		case Mode::VAD:
 			// Force the first fetch in VAD mode to broadcast the current state.
 			lastVADState.store(-1);
+			break;
+
+		case Mode::Record:
+			if(ServiceLocator::LEDControlInstance){
+				ServiceLocator::LEDControlInstance->startListen();
+			}
 			break;
 
 		case Mode::Off:
@@ -507,7 +515,7 @@ void AudioFrontend::waitAtGate(EventBits_t atGateBit){
 	xEventGroupClearBits(taskGate, atGateBit);
 }
 
-void AudioFrontend::loadModel(){
+void AudioFrontend::loadModel(bool withRecognizer){
 	if(afe_handle){
 		CMF_LOG(AudioFrontend, LogLevel::Error, "Model already loaded!");
 		return;
@@ -556,6 +564,11 @@ void AudioFrontend::loadModel(){
 	afe_data = afe_handle->create_from_config(afe_config);
 	MemMark::mark("sr: afe");
 
+	if(!withRecognizer){
+		MemMark::mark("sr: afe only");
+		return;
+	}
+
 	//Multinet (speech recognition)
 	char* mn_name = esp_srmodel_filter(models, ESP_MN_PREFIX, ESP_MN_ENGLISH);
 	CMF_LOG(AudioFrontend, LogLevel::Info, "multinet:%s", mn_name);
@@ -594,7 +607,9 @@ void AudioFrontend::unloadModel(){
 
 	uint32_t startTime = millis();
 
-	ESP_ERROR_CHECK(esp_mn_commands_free());
+	if(multinet_handle){ // not loaded on the AI path; freeing then just logged "not initialized"
+		esp_mn_commands_free();
+	}
 
 	if(multinet_handle && multinet_data){
 		multinet_handle->destroy(multinet_data);
@@ -669,6 +684,10 @@ void AudioFrontend::procTaskFunc(){
 
 		case Mode::VAD:
 			processVAD(res);
+			break;
+
+		case Mode::Record:
+			processRecord(res);
 			break;
 
 		case Mode::Off:
@@ -829,6 +848,9 @@ int AudioFrontend::fuzzyMatch(const std::string& transcript){
 	if(bestOtherAction - scores[best] < FuzzyMargin){
 		CMF_LOG(AudioFrontend, LogLevel::Info, "Fuzzy match ambiguous: best '%s' score %.3f, competing action score %.3f",
 			speechPhrases[best].string, scores[best], bestOtherAction);
+		// Fork: this used to only log and then accept the match anyway, so "dance" (not a command) ran "cancel".
+		// Two different actions scoring this close means we don't know what was said: ask again instead.
+		return -1;
 	}
 
 	const float bestThreshold = speechPhrases[best].fuzzyThreshold;
@@ -852,4 +874,47 @@ void AudioFrontend::processVAD(afe_fetch_result_t* res){
 	if(lastVADState.exchange(current) == current) return;
 
 	onVAD.broadcast(current == 1);
+}
+
+void AudioFrontend::startRecording(std::shared_ptr<BrainLink::Recording> rec){
+	setMode(Mode::Off);
+	rec->pcm.clear();
+	rec->pcm.reserve(BrainLink::Recording::MaxSamples);
+	recording = std::move(rec);
+	setMode(Mode::Record);
+}
+
+void AudioFrontend::processRecord(afe_fetch_result_t* res){
+	auto rec = recording;
+	if(!rec || rec->done) return;
+
+	const uint32_t chunkMs = (uint32_t) (res->data_size / sizeof(int16_t)) * 1000 / 16000;
+	rec->totalMs += chunkMs;
+	auto append = [&rec](const int16_t* p, size_t n){
+		const size_t room = BrainLink::Recording::MaxSamples - rec->pcm.size();
+		rec->pcm.insert(rec->pcm.end(), p, p + std::min(n, room));
+	};
+
+	if(res->vad_state == VAD_SPEECH){
+		if(!rec->heardSpeech){
+			rec->heardSpeech = true;
+			// The AFE keeps the audio from just before VAD triggered, so the first syllable isn't lost
+			if(res->vad_cache_size > 0){
+				append(res->vad_cache, (size_t) res->vad_cache_size / sizeof(int16_t));
+			}
+		}
+		rec->silentMs = 0;
+	}else if(rec->heardSpeech){
+		rec->silentMs += chunkMs;
+	}
+
+	if(rec->heardSpeech){
+		append(res->data, (size_t) res->data_size / sizeof(int16_t));
+	}
+
+	if((rec->heardSpeech && rec->silentMs >= EndSilenceMs) ||
+	   (!rec->heardSpeech && rec->totalMs >= NoSpeechMs) ||
+	   rec->pcm.size() >= BrainLink::Recording::MaxSamples){
+		rec->done = true;
+	}
 }

@@ -4,6 +4,7 @@
 #include "Services/Audio/AudioGenerator.h"
 #include "Reverb.h"
 #include "Compressor.h"
+#include "VoicePreset.h"
 /**
  * Interface between CMF Audio service and locally defined SpeechGen service.
  *
@@ -26,6 +27,14 @@ private:
 	int bytesRemaining = 0;
 	Compressor compressor;
 	Reverb reverb;
+
+	// Fork: voice preset effect (see VoicePreset.h)
+	static constexpr int SampleRate = 16000;
+	void applyFx(int16_t* samples, size_t count);
+	Voice::Fx fx = Voice::Fx::None;
+	float ringPhase = 0.0f;
+	int crushCount = 0;
+	int16_t crushHeld = 0;
 };
 
 

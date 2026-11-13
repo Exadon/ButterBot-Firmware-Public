@@ -1,4 +1,5 @@
 #include "SpeechGen.h"
+#include "VoicePreset.h"
 #include <utility>
 #include "Memory/ObjectMemory.h"
 #include "Util/stdafx.h"
@@ -116,6 +117,13 @@ void SpeechGen::fliteThreadFunc(){
 	}
 
 	CMF_LOG(SpeechGen, LogLevel::Debug, "flite start synth");
+
+	// Fork: apply the voice preset. Done here, on the flite thread, because flite reads these features while it
+	// synthesizes - changing them from another task mid-sentence would race.
+	const Voice::Preset& preset = Voice::current();
+	feat_set_float(voice->features, "int_f0_target_mean", preset.pitch);
+	feat_set_float(voice->features, "int_f0_target_stddev", preset.range);
+	feat_set_float(voice->features, "duration_stretch", preset.stretch);
 
 	switch(fliteInputType){
 		case InputType::Text:

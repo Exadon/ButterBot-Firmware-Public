@@ -18,6 +18,8 @@
 #include "esp_mn_iface.h"
 #include "model_path.h"
 #include "Services/LEDControl.h"
+#include "Services/BrainLink.h"
+#include <memory>
 
 class AudioFrontend : public Object {
 	GENERATED_BODY(AudioFrontend, Object, void);
@@ -27,7 +29,8 @@ public:
 	~AudioFrontend() override;
 
 	enum class Mode : uint8_t {
-		Audio, Wake, Speech, VAD, Off
+		Audio, Wake, Speech, VAD, Off,
+		Record // fork: capture one utterance for the AI brain (see startRecording)
 	};
 
 	void setMode(Mode mode);
@@ -96,7 +99,15 @@ public:
 	DECLARE_EVENT(VADEvent, AudioFrontend, bool)
 	VADEvent onVAD = VADEvent(this);
 
-	void loadModel();
+	/** withRecognizer=false skips MultiNet and its command list (the AI brain path only needs the AFE + VAD). */
+	void loadModel(bool withRecognizer = true);
+
+	/**
+	 * Fork: records one utterance into rec, using the AFE's voice activity detection to decide when it starts and
+	 * ends (speech, then ~1 s of silence; or nothing heard within NoSpeechMs; or 10 s). Sets Mode::Record.
+	 * rec->done flips when finished; the caller then sets Mode::Off.
+	 */
+	void startRecording(std::shared_ptr<BrainLink::Recording> rec);
 	void unloadModel();
 
 private:
@@ -127,6 +138,11 @@ private:
 
 	void processVAD(afe_fetch_result_t* res);
 
+	void processRecord(afe_fetch_result_t* res);
+	std::shared_ptr<BrainLink::Recording> recording;
+	static constexpr uint32_t NoSpeechMs = 6000;
+	static constexpr uint32_t EndSilenceMs = 700;
+
 	// Last vad_state observed in Mode::VAD that was broadcast on onVAD.
 	// -1 is a sentinel meaning "nothing fired yet"; used to force the first
 	// fetch after entering VAD mode to publish the initial state.
@@ -146,7 +162,7 @@ private:
 	model_iface_data_t* multinet_data = nullptr;
 
 	//MultiNet speech recognition buffer size
-	static constexpr int32_t MultinetDuration = 4000; //[ms]
+	static constexpr int32_t MultinetDuration = 6000; //[ms] (fork: 4000 cut people off mid-command)
 
 	static constexpr float MultinetDetThreshold = 0.35f;
 

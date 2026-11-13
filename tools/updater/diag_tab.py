@@ -137,7 +137,142 @@ class DiagnosticsTab(tk.Frame):
                        text="Raw lamp flickering while 'Obstacle' stays off = glitches being ignored.")
         cv.create_text(14, 280, anchor="w", fill=p["DIM"], font=("Segoe UI", 8),
                        text="Sensor lamps update on changes and on the robot's own checks before it moves.")
+        self._build_drive(f)
         return f
+
+    # --- driving over USB -------------------------------------------------------------------------------
+    # Hold an arrow (or arrow keys / WASD while this tab is open) and the app sends "drive <left> <right>"
+    # every SEND_MS; the robot stops by itself 400 ms after the last one, so a dropped cable can't run it away.
+    SEND_MS = 150
+    KEYS = {"Up": "up", "w": "up", "Down": "down", "s": "down", "Left": "left", "a": "left", "Right": "right",
+            "d": "right"}
+
+    def _build_drive(self, parent):
+        p = self.pal
+        box = tk.Frame(parent, bg=p["PANEL"])
+        box.pack(fill="x", padx=12, pady=(0, 10))
+        tk.Label(box, text="DRIVE", bg=p["PANEL"], fg=p["GREEN"], font=("Segoe UI Black", 10)).grid(
+            row=0, column=0, columnspan=3, sticky="w")
+        self.drive_btns = {}
+        for name, glyph, r, c in (("up", "▲", 1, 1), ("left", "◀", 2, 0), ("stop", "■", 2, 1), ("right", "▶", 2, 2),
+                                  ("down", "▼", 3, 1)):
+            b = tk.Button(box, text=glyph, width=4, bg=p["PANEL_HI"], fg=p["LIME"], activebackground=p["GREEN"],
+                          activeforeground=p["BG"], relief="flat", bd=0, cursor="hand2",
+                          font=("Segoe UI Black", 14), highlightthickness=1, highlightbackground=p["EDGE"])
+            b.grid(row=r, column=c, padx=2, pady=2, ipady=2)
+            if name == "stop":
+                b.configure(command=lambda: self._drive_stop(), fg=p["BAD"])
+            else:
+                b.bind("<ButtonPress-1>", lambda e, n=name: self._drive_start(n))
+                b.bind("<ButtonRelease-1>", lambda e: self._drive_stop())
+            self.drive_btns[name] = b
+
+        side = tk.Frame(box, bg=p["PANEL"])
+        side.grid(row=1, column=3, rowspan=3, sticky="nw", padx=(18, 0))
+        tk.Label(side, text="Speed", bg=p["PANEL"], fg=p["DIM"], font=("Segoe UI", 8)).pack(anchor="w")
+        self.speed_var = tk.IntVar(value=60)
+        tk.Scale(side, from_=30, to=100, orient="horizontal", variable=self.speed_var, length=170, showvalue=True,
+                 bg=p["PANEL"], fg=p["TEXT"], troughcolor="#08100a", highlightthickness=0, activebackground=p["GREEN"],
+                 bd=0, sliderrelief="flat").pack(anchor="w")
+        self.drive_lbl = tk.Label(side, text="Connect to the robot's port to drive it.", bg=p["PANEL"], fg=p["DIM"],
+                                  font=("Segoe UI", 9), wraplength=230, justify="left", anchor="w")
+        self.drive_lbl.pack(anchor="w", pady=(4, 0))
+        tk.Label(side, text="Hold an arrow, or use arrow keys / WASD. Works while the robot is idle; it won't drive "
+                            "forward into an obstacle or off an edge.", bg=p["PANEL"], fg=p["DIM"],
+                 font=("Segoe UI", 8), wraplength=230, justify="left").pack(anchor="w", pady=(4, 0))
+
+        self.drive_dir: str | None = None
+        self._drive_job = None
+        self._key_release_job = None
+        self._drive_started_at = 0.0
+        self._drive_reply_at = 0.0
+        top = self.winfo_toplevel()
+        top.bind_all("<KeyPress>", self._key_down, add="+")
+        top.bind_all("<KeyRelease>", self._key_up, add="+")
+
+    def _speeds(self, d: str) -> tuple[int, int]:
+        s = int(self.speed_var.get())
+        t = max(30, int(s * 0.7))
+        return {"up": (s, s), "down": (-s, -s), "left": (-t, t), "right": (t, -t)}[d]
+
+    def _drive_start(self, d: str):
+        if self.session is None or self.dev not in ("bot", ""):
+            self.drive_lbl.configure(text="Connect to the robot's port first.", fg=self.pal["WARN"])
+            return
+        if self.dev == "":
+            self.drive_lbl.configure(text="Still finding out what's on this port…", fg=self.pal["DIM"])
+            return
+        self.drive_dir = d
+        for n, b in self.drive_btns.items():
+            b.configure(bg=self.pal["GREEN"] if n == d else self.pal["PANEL_HI"])
+        if self._drive_job is None:
+            self._drive_tick()
+
+    def _drive_tick(self):
+        if self.drive_dir is None or self.session is None:
+            self._drive_job = None
+            return
+        left, right = self._speeds(self.drive_dir)
+        self.session.send(f"drive {left} {right}")
+        now = time.time()
+        if self._drive_started_at == 0.0:
+            self._drive_started_at = now
+        elif now - self._drive_started_at > 1.2 and self._drive_reply_at < self._drive_started_at:
+            self.drive_lbl.configure(text="No answer from the robot. Driving needs the new robot firmware "
+                                          "(this Dimension Hopper's release or newer).", fg=self.pal["WARN"])
+        self._drive_job = self.after(self.SEND_MS, self._drive_tick)
+
+    def _drive_stop(self):
+        self.drive_dir = None
+        self._drive_started_at = 0.0
+        if self._drive_job is not None:
+            self.after_cancel(self._drive_job)
+            self._drive_job = None
+        for b in self.drive_btns.values():
+            b.configure(bg=self.pal["PANEL_HI"])
+        if self.session is not None:
+            self.session.send("stop")
+
+    def _tab_visible(self) -> bool:
+        try:
+            return bool(self.winfo_ismapped())
+        except tk.TclError:
+            return False
+
+    def _key_down(self, e):
+        d = self.KEYS.get(e.keysym)
+        if d is None or not self._tab_visible() or isinstance(e.widget, (tk.Entry, ttk.Combobox)):
+            return
+        if self._key_release_job is not None:  # Windows key auto-repeat: release+press pairs while held
+            self.after_cancel(self._key_release_job)
+            self._key_release_job = None
+        if self.drive_dir != d:
+            self._drive_start(d)
+
+    def _key_up(self, e):
+        if self.KEYS.get(e.keysym) is None or not self._tab_visible():
+            return
+        if self._key_release_job is not None:
+            self.after_cancel(self._key_release_job)
+        self._key_release_job = self.after(80, self._key_released)
+
+    def _key_released(self):
+        self._key_release_job = None
+        self._drive_stop()
+
+    def _drive_reply(self, f: dict):
+        p = self.pal
+        self._drive_reply_at = time.time()
+        res, why = f.get("result", ""), f.get("why", "")
+        if res == "ok":
+            self.drive_lbl.configure(text=f"Driving (left {f.get('l')}, right {f.get('r')})", fg=p["GREEN"])
+        elif res == "blocked":
+            text = {"obstacle": "Blocked: something in front of it.", "no_floor": "Blocked: no floor under it.",
+                    "busy": f"The robot is busy ({f.get('state', '?')}). Driving works when it's idle.",
+                    "no_motors": "The motor board didn't start."}.get(why, f"Blocked ({why})")
+            self.drive_lbl.configure(text=text, fg=p["WARN"])
+        elif res == "stopped":
+            self.drive_lbl.configure(text="Stopped.", fg=p["DIM"])
 
     def _build_controller(self, parent):
         p = self.pal
@@ -187,6 +322,11 @@ class DiagnosticsTab(tk.Frame):
         if self.app.busy:
             self.state_lbl.configure(text="Busy flashing - try again when it's done", fg=self.pal["WARN"])
             return
+        if port == self.app.console_tab.port_open():
+            self.state_lbl.configure(text="That port is open in the Console tab - disconnect it there first",
+                                     fg=self.pal["WARN"])
+            return
+        self.dev = ""
         self.app.monitor_port = port
         self.session = core.DiagSession(port, self._on_line, self._on_end)
         self.session.start()
@@ -197,6 +337,8 @@ class DiagnosticsTab(tk.Frame):
     def _on_end(self, reason: str):
         def ui():
             self.session = None
+            self._drive_stop()
+            self.drive_lbl.configure(text="Connect to the robot's port to drive it.", fg=self.pal["DIM"])
             self.app.monitor_port = None
             self.connect_btn.configure(text="Connect")
             self.state_lbl.configure(text=reason, fg=self.pal["DIM"] if reason == "Disconnected" else self.pal["BAD"])
@@ -211,7 +353,11 @@ class DiagnosticsTab(tk.Frame):
                 self.last_diag = time.time()
                 self.dev = fields.get("dev", "")
                 (self._set_robot if self.dev == "bot" else self._set_ctrl)(fields)
+            elif kind == "BBDRIVE":
+                self._drive_reply(fields)
             elif kind == "BBSTAT":
+                if fields.get("dev"):
+                    self.dev = fields["dev"]
                 fw = fields.get("fw", "?")
                 who = "ButterBot" if fields.get("dev") == "bot" else "Controller"
                 self.state_lbl.configure(text=f"{who} on {self.port()} · fw {fw}", fg=self.pal["GREEN"])
@@ -288,4 +434,6 @@ class DiagnosticsTab(tk.Frame):
 
     def shutdown(self):
         if self.session is not None:
+            if self.drive_dir is not None:
+                self.session.send("stop")
             self.session.close()

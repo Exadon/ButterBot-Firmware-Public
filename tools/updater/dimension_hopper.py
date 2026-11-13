@@ -23,11 +23,14 @@ from tkinter import filedialog, ttk
 import hopper_core as core
 from guide_tab import GuideTab
 from diag_tab import DiagnosticsTab
+from console_tab import ConsoleTab
+from ai_tab import AITab
+from personalize_tab import PersonalizeTab
 from hop_dialog import HopDialog
 from hopper_core import Kind
 
 APP_TITLE = "Dimension Hopper"
-VERSION = "1.0.0"
+VERSION = "1.2.0"
 
 # --- palette: portal-fluid green on lab-floor black --------------------------------------
 BG = "#070b08"
@@ -192,12 +195,22 @@ class DeviceSlot(tk.Frame):
         self.status_btn.pack(side="left", padx=(6, 0))
         self.wake_btn = app.button(row, "Wake", lambda: app.run_wake(self), small=True)
         self.wake_btn.pack(side="left", padx=(6, 0))
+        self.forget_btn = app.button(row, "Forget pairing", lambda: app.run_forget(self), small=True)
+        self.forget_btn.pack(side="left", padx=(6, 0))
         self.parked_lbl = tk.Label(self, text="⏸ PARKED IN BOOTLOADER - not running, can't pair. Beam or hit Wake.",
                                    bg=PANEL, fg=WARN, anchor="w", font=("Segoe UI Semibold", 8))
 
         self.chip_lbl = tk.Label(self, text="No board identified yet", bg=PANEL, fg=DIM, anchor="w",
-                                 font=("Segoe UI", 9))
+                                 justify="left", wraplength=420, font=("Segoe UI", 9))
         self.chip_lbl.pack(fill="x", **pad)
+        # health (RAM, uptime, last reset, boots) and how the board's firmware compares with the latest release
+        self.health_lbl = tk.Label(self, text="", bg=PANEL, fg=DIM, anchor="w", justify="left", wraplength=420,
+                                   font=("Segoe UI", 8))
+        self.health_lbl.pack(fill="x", **pad)
+        self.release_lbl = tk.Label(self, text="", bg=PANEL, fg=DIM, anchor="w", justify="left", wraplength=420,
+                                    font=("Segoe UI Semibold", 8))
+        self.release_lbl.pack(fill="x", **pad)
+        self.dev_status: core.DeviceStatus | None = None
 
         # source
         src = tk.Frame(self, bg=PANEL)
@@ -407,6 +420,31 @@ class DeviceSlot(tk.Frame):
         cached = " · cached" if rel.cache_path().exists() else ""
         self.payload_lbl.configure(text=f"{rel.tag}  ·  {rel.asset_name}  ·  {rel.size / core.MiB:.1f} MB{cached}",
                                    fg=TEXT)
+        self._show_release_note()
+
+    def _show_release_note(self):
+        st = self.dev_status
+        if st is None or st.error or self.release is None:
+            self.release_lbl.configure(text="")
+            return
+        text, newer = core.release_note(st.firmware, self.release.tag)
+        self.release_lbl.configure(text=("⬆ " if newer else "✔ ") + f"{self.release.repo}: {text}" if text else "",
+                                   fg=WARN if newer else GREEN)
+
+    def show_status(self, st: core.DeviceStatus):
+        """Shows what a passive status read found: who this is, battery/link/firmware, and health."""
+        self.dev_status = st
+        if st.error:
+            self.chip_lbl.configure(text=st.error, fg=BAD)
+            self.health_lbl.configure(text="")
+            self.release_lbl.configure(text="")
+            return
+        low = st.battery is not None and st.battery <= 15
+        self.chip_lbl.configure(text=f"{Kind.LABEL.get(st.kind or '', 'Board')} running  ·  " + st.summary()
+                                     + ("  ⚠ low battery" if low else ""), fg=WARN if low else GREEN)
+        health, worry = st.health()
+        self.health_lbl.configure(text=("⚠ " if worry else "") + health, fg=WARN if worry else DIM)
+        self._show_release_note()
 
     # --- port / probe -------------------------------------------------------------------------
     def set_ports(self, ports: list[core.PortInfo]):
@@ -492,8 +530,14 @@ class App:
         pal = self.pal = dict(BG=BG, PANEL=PANEL, PANEL_HI=PANEL_HI, EDGE=EDGE, GREEN=GREEN, LIME=LIME, TEAL=TEAL,
                               DIM=DIM, TEXT=TEXT, WARN=WARN, BAD=BAD)
         nb.add(GuideTab(nb, pal, load_art), text="  Guide  ")
+        self.personalize_tab = PersonalizeTab(nb, pal, self)
+        nb.add(self.personalize_tab, text="  Personalize  ")
         self.diag_tab = DiagnosticsTab(nb, pal, self)
         nb.add(self.diag_tab, text="  Diagnostics  ")
+        self.console_tab = ConsoleTab(nb, pal, self)
+        nb.add(self.console_tab, text="  Console  ")
+        self.ai_tab = AITab(nb, pal, self)
+        nb.add(self.ai_tab, text="  AI  ")
 
         # devices
         mid = tk.Frame(flash, bg=BG)
@@ -516,6 +560,15 @@ class App:
                        command=self._save_backup_pref, bg=BG, fg=TEXT, selectcolor=PANEL_HI,
                        activebackground=BG, activeforeground=GREEN, highlightthickness=0,
                        font=("Segoe UI", 9)).pack(side="left", padx=10)
+        # Keep pairing: leave the NVS partition (Bluetooth bonds, settings) alone. Quick: only write the 64 KB
+        # pieces that differ from what's on the chip.
+        self.keep_var = tk.BooleanVar(value=bool(self.cfg.get("keep_pairing", True)))
+        self.quick_var = tk.BooleanVar(value=bool(self.cfg.get("quick_flash", True)))
+        for text, var, key in (("Keep pairing & settings", self.keep_var, "keep_pairing"),
+                               ("Only write what changed", self.quick_var, "quick_flash")):
+            tk.Checkbutton(bar, text=text, variable=var, command=lambda v=var, k=key: self._save_pref(k, v),
+                           bg=BG, fg=TEXT, selectcolor=PANEL_HI, activebackground=BG, activeforeground=GREEN,
+                           highlightthickness=0, font=("Segoe UI", 9)).pack(side="left", padx=(0, 10))
         self.button(bar, "Backups folder", lambda: core.open_folder(core.BACKUP_DIR), small=True).pack(side="right")
 
         # log
@@ -547,8 +600,10 @@ class App:
                      lightcolor=LIME, darkcolor=TEAL, bordercolor=EDGE, thickness=12)
         st.configure("Hop.TCombobox", fieldbackground=PANEL_HI, background=PANEL_HI, foreground=TEXT,
                      arrowcolor=GREEN, bordercolor=EDGE, lightcolor=PANEL_HI, darkcolor=PANEL_HI)
-        st.map("Hop.TCombobox", fieldbackground=[("readonly", PANEL_HI)], foreground=[("readonly", TEXT)],
-               selectbackground=[("readonly", PANEL_HI)], selectforeground=[("readonly", GREEN)])
+        st.map("Hop.TCombobox", fieldbackground=[("disabled", PANEL), ("readonly", PANEL_HI)],
+               foreground=[("disabled", EDGE), ("readonly", TEXT)], arrowcolor=[("disabled", EDGE)],
+               selectbackground=[("disabled", PANEL), ("readonly", PANEL_HI)],
+               selectforeground=[("disabled", EDGE), ("readonly", GREEN)])
         st.configure("Hop.Vertical.TScrollbar", background=PANEL_HI, troughcolor="#040705", arrowcolor=GREEN,
                      bordercolor=EDGE, lightcolor=PANEL_HI, darkcolor=PANEL_HI, gripcount=0)
         st.map("Hop.Vertical.TScrollbar", background=[("active", "#1f5a2c")])
@@ -580,6 +635,10 @@ class App:
         self.cfg["backup_first"] = bool(self.backup_var.get())
         core.save_config(self.cfg)
 
+    def _save_pref(self, key: str, var: tk.BooleanVar):
+        self.cfg[key] = bool(var.get())
+        core.save_config(self.cfg)
+
     # --- thread plumbing --------------------------------------------------------------------
     def ui(self, fn):
         """Schedule fn on the Tk thread (worker threads must never touch widgets directly)."""
@@ -609,7 +668,7 @@ class App:
         for b in (self.scan_btn, self.both_btn):
             b.configure(state=state)
         for s in self.slots.values():
-            for b in (s.go_btn, s.probe_btn, s.status_btn, s.wake_btn, s.browse_btn):
+            for b in (s.go_btn, s.probe_btn, s.status_btn, s.wake_btn, s.forget_btn, s.browse_btn):
                 b.configure(state=state)
 
     def job(self, name: str, fn):
@@ -639,7 +698,7 @@ class App:
 
     def run_scan(self):
         ports = self.refresh_ports()
-        esp = [p for p in ports if p.is_usb and p.device != self.monitor_port]  # skip the Diagnostics port
+        esp = [p for p in ports if p.is_usb and p.device not in self.held_ports()]  # skip ports open in other tabs
         if not esp:
             self.headline.configure(text="No USB serial boards found. Is the robot ON? Hold its power button ~2 s.", fg=WARN)
             self.log("No USB serial devices found. The robot's USB only appears while it's powered on "
@@ -649,8 +708,31 @@ class App:
         self.log(f"{quip('scan')} found {', '.join(p.device for p in esp)}")
 
         def work():
+            # 1. Listen first: fork firmware says who it is every 5 s ([BBSTAT] dev=bot|ctrl). That doesn't reset
+            #    anything, so the boards keep running (and stay paired). All ports at once.
+            self.tlog(f"Listening on {', '.join(p.device for p in esp)} for status lines (no reset)…")
+            found: dict[str, core.DeviceStatus] = {}
+
+            def listen(dev):
+                found[dev] = core.read_status(dev, timeout_s=6.5, exclusive=False)
+            threads = [threading.Thread(target=listen, args=(p.device,)) for p in esp]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+            unknown = []
             for p in esp:
-                self.tlog(f"Probing {p.device}…")
+                st = found.get(p.device)
+                if st is None or st.error or st.kind not in self.slots:
+                    unknown.append(p)
+                    continue
+                self.tlog(f"{p.device}: {Kind.LABEL[st.kind]} - {st.summary()}", "hi")
+                slot = self.slots[st.kind]
+                self.ui(lambda s=slot, st=st: (s.select_port(st.port), s.show_status(st)))
+
+            # 2. Anything silent (stock firmware, or not running) gets the bootloader probe
+            for p in unknown:
+                self.tlog(f"{p.device} is silent - probing it in bootloader mode…")
                 r = core.probe(p.device, self.cfg["baud"])
                 if r.error:
                     self.tlog(f"{p.device}: {r.error}", "bad")
@@ -680,11 +762,49 @@ class App:
         return HopDialog(self.root, self.pal, self.button, kind, title, message, details, (ok, cancel),
                          default=0, cancel=1).run() == 0
 
+    def held_ports(self) -> set[str]:
+        """Ports kept open by the Diagnostics or Console tab."""
+        return {p for p in (self.monitor_port, self.console_tab.port_open()) if p}
+
     def port_in_use(self, port: str) -> bool:
         if port and port == self.monitor_port:
             self.info(f"{port} is open in the Diagnostics tab. Disconnect it there first.", "Port busy")
             return True
+        if port and port == self.console_tab.port_open():
+            self.info(f"{port} is open in the Console tab. Disconnect it there first.", "Port busy")
+            return True
         return False
+
+    def run_forget(self, slot: DeviceSlot):
+        """Drops the board's Bluetooth bonds (fork firmware 'forget' command) so the pair can bond again from scratch."""
+        port = slot.port()
+        if not port:
+            self.info("Pick a port first (or hit Scan dimensions).", "Which board?")
+            return
+        if self.port_in_use(port):
+            return
+        if port in self.parked:
+            self.info(f"{port} is parked in bootloader mode, so its firmware can't take commands. Hit Wake first.",
+                      "Board is parked")
+            return
+        if not self.confirm("Forget pairing?",
+                            f"The {Kind.LABEL[slot.kind]} on {port} will forget every robot/controller it has "
+                            "paired with. Do it on BOTH boards, then switch both off and on so they pair fresh.",
+                            ok="Forget", kind="warning"):
+            return
+
+        def work():
+            r = core.console_command(port, "forget", "BBFORGET")
+            if problem := core.port_problem(r, port):
+                self.tlog(problem, "warn")
+                return
+            if r is None:
+                self.tlog(f"{port}: no answer. Forget needs fork firmware with console commands "
+                          "(this release or newer) and the board switched on.", "warn")
+                return
+            self.tlog(f"{port}: forgot {r.get('removed', '?')} pairing(s). Now do the other board, then power-cycle "
+                      "both.", "hi")
+        self.job("Forget", work)
 
     def run_status(self, slot: DeviceSlot):
         """Reads the board's [BBSTAT] line without resetting it: battery, charging, link, firmware."""
@@ -703,11 +823,9 @@ class App:
         def work():
             st = core.read_status(port)
             ok = not st.error
-            low = st.battery is not None and st.battery <= 15
-            color = BAD if not ok else (WARN if low else GREEN)
-            text = st.summary() + ("  ⚠ low battery" if low else "")
-            self.tlog(f"{port}: {text}", "hi" if ok and not low else ("warn" if ok else "bad"))
-            self.ui(lambda: slot.chip_lbl.configure(text=text, fg=color))
+            text = st.summary() + ("  ·  " + st.health()[0] if ok and st.health()[0] else "")
+            self.tlog(f"{port}: {text}", "hi" if ok else "bad")
+            self.ui(lambda: slot.show_status(st))
         self.job("Status", work)
 
     def run_probe(self, slot: DeviceSlot):
@@ -791,11 +909,12 @@ class App:
                             details, ok="BEAM IT  ▶"):
             return
         backup_first = bool(self.backup_var.get())
+        opts = dict(keep=bool(self.keep_var.get()), quick=bool(self.quick_var.get()))
 
         def work():
             ok = 0
             for s in chosen:
-                if self._update_one(s, backup_first):
+                if self._update_one(s, backup_first, **opts):
                     ok += 1
             done = ok == len(chosen)
             self.ui(lambda: (self.portal.flash(LIME if done else BAD),
@@ -803,7 +922,7 @@ class App:
                                                      fg=GREEN if done else BAD)))
         self.job("Update", work)
 
-    def _update_one(self, s: DeviceSlot, backup_first: bool) -> bool:
+    def _update_one(self, s: DeviceSlot, backup_first: bool, keep: bool = True, quick: bool = True) -> bool:
         name, port, baud = Kind.LABEL[s.kind], s.port(), self.cfg["baud"]
 
         def status(text, color=DIM, pct=None):
@@ -854,13 +973,52 @@ class App:
 
             # 4. flash + verify
             status(quip("flash"))
-            core.write(port, plan, baud,
-                       lambda l: self.tlog(f"[{name}] {l}") if ("Hash of data" in l or "Wrote" in l) else None,
-                       prog(50 if backup_first else 15, 50 if backup_first else 85))
-            status("Landed and verified. " + ("Press the power button to wake it." if s.kind == Kind.BOT else
-                                              "It's rebooting."), GREEN, 100)
-            self.tlog(f"[{name}] done ✔", "hi")
+            show = lambda l: self.tlog(f"[{name}] {l}") if ("Hash of data" in l or "Wrote" in l) else None  # noqa: E731
+            bar = prog(50 if backup_first else 15, 50 if backup_first else 85)
+            if keep or quick:
+                st = core.smart_write(port, plan, baud, r.flash_bytes, keep, show, bar, compare=quick)
+                saved = "" if not quick else (
+                    f" Wrote {st.written / core.MiB:.1f} of {st.total / core.MiB:.1f} MB - the rest was already there."
+                    if st.written < st.total else "")
+                self.tlog(f"[{name}] written and verified.{saved}"
+                          + (" Pairing and settings kept." if st.kept_nvs else "")
+                          + (f" Note: {st.note}." if st.note else ""), "hi")
+            else:
+                core.write(port, plan, baud, show, bar)
             self.ui(lambda: self._set_parked(port, False))  # the write ends with a hard reset
+
+            # 5. wait for it to run the new firmware, and check it's the version we wrote
+            stock = s.src_var.get() == "release" and s._is_stock()
+            if stock:  # stock firmware prints no status line, so there's nothing to confirm with
+                status("Landed and verified. " + ("Press the power button to turn it on." if s.kind == Kind.BOT
+                                                  else "It's rebooting."), GREEN, 100)
+                self.tlog(f"[{name}] done ✔", "hi")
+                return True
+            bot = s.kind == Kind.BOT
+
+            def waiting(state):
+                if bot and state == "off":
+                    status("Flashed ✔  Now turn the robot on: hold its power button ~1 s.", WARN, 100)
+                elif state == "on":
+                    status("Waiting for it to start up…", DIM, 100)
+            if bot:
+                self.ui(lambda: self.headline.configure(
+                    text="Robot flashed. Hold its power button ~1 s to turn it on - I'll check it booted.", fg=WARN))
+            st = core.wait_for_boot(port, plan.app.version if plan.app else "", 300 if bot else 40, on_wait=waiting)
+            if st.error:
+                status("Flashed and verified, but it didn't report back. " +
+                       ("Turn it on (hold the button ~1 s) and hit Status." if bot else "Hit Status to check."),
+                       WARN, 100)
+                self.tlog(f"[{name}] flashed, but no status line within the wait ({st.error}).", "warn")
+                return True
+            self.ui(lambda: s.show_status(st))
+            want = plan.app.version if plan.app else ""
+            if want and not core.version_matches(st.firmware, want):
+                status(f"⚠ It booted, but reports {st.firmware} instead of {want}.", WARN, 100)
+                self.tlog(f"[{name}] booted {st.firmware}, expected {want}", "warn")
+                return False
+            status(f"Running the new firmware ({st.firmware}) ✔", GREEN, 100)
+            self.tlog(f"[{name}] done ✔ - booted {st.firmware}", "hi")
             return True
         except (core.EsptoolError, core.ImageError, OSError, ValueError, RuntimeError) as e:
             status(f"✖ {e}", BAD)
@@ -955,6 +1113,8 @@ class App:
 
     def _close(self):
         self.diag_tab.shutdown()
+        self.console_tab.shutdown()
+        self.ai_tab.shutdown()
         if self.busy and not self.confirm(
                 "Flash in progress", "Quitting now can leave the board half-written. It stays recoverable over USB, "
                 "but you'd have to flash it again.", ok="Quit anyway", cancel="Keep flashing", kind="warning"):
@@ -992,6 +1152,13 @@ def _selftest(out: str):
     lines.append(f"guide: {len(GuideTab._load_data()['entries'])} voice actions; images "
                  f"{[n for n in ('bot_guide.png', 'controller_guide.png') if _asset(n).exists()]}")
     lines.append(f"probe COM250: {core.probe('COM250').error[:60]}")
+    try:  # AI tab dependencies are imported lazily, so make sure the exe really bundles them
+        import faster_whisper, ctranslate2, anthropic, keyring, brain  # noqa: E401
+        lines.append(f"ai: faster_whisper {faster_whisper.__version__}, ctranslate2 {ctranslate2.__version__}, "
+                     f"anthropic {anthropic.__version__}, keyring backend {type(keyring.get_keyring()).__name__}, "
+                     f"{len(brain.load_actions(Path(getattr(sys, '_MEIPASS', Path(__file__).parent)) / 'guide_data.json'))} actions")
+    except Exception as e:  # noqa: BLE001
+        lines.append(f"ai: MISSING {e!r}")
     Path(out).write_text("\n".join(lines), encoding="utf-8")
 
 

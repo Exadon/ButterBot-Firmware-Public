@@ -65,7 +65,9 @@ struct BBData {}; // Empty struct. All action-related data structs must inherit 
 
 struct ListenData : BBData {
 	enum class Phase : uint8_t {
-		Listening, NotUnderstand, Abort
+		Listening, NotUnderstand, Abort,
+		Heard,   // fork: AI mode - the sentence is recorded
+		Thinking // fork: AI mode - waiting for the brain on the PC
 	} phase;
 };
 
