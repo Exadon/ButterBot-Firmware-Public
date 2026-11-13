@@ -2,6 +2,7 @@
 #include "Client.h"
 #include "Server.h"
 #include "ConMan.h"
+#include "Bonds.h"
 #include <cstring>
 #include <esp_gatt_common_api.h>
 #include <Log/Log.h>
@@ -100,7 +101,17 @@ void BLE::GAP::ble_GAP_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t* 
 
 		case ESP_GAP_BLE_AUTH_CMPL_EVT:{
 			if(!param->ble_security.auth_cmpl.success){
-				CMF_LOG(BLE_GAP, LogLevel::Info, "fail reason = 0x%x", param->ble_security.auth_cmpl.fail_reason);
+				esp_bd_addr_t addr;
+				memcpy(addr, param->ble_security.auth_cmpl.bd_addr, ESP_BD_ADDR_LEN);
+				CMF_LOG(BLE_GAP, LogLevel::Warning, "pairing with " ESP_BD_ADDR_STR " failed, reason 0x%x",
+						ESP_BD_ADDR_HEX(addr), param->ble_security.auth_cmpl.fail_reason);
+				// A failed pairing with a peer we hold a bond for means one side lost its keys (a
+				// reflash/restore replaces NVS). That bond can never work again and makes every
+				// reconnect fail the same way, so drop it: the peer's next attempt pairs fresh.
+				if(BLE::isBonded(addr)){
+					CMF_LOG(BLE_GAP, LogLevel::Warning, "forgetting the stale bond for " ESP_BD_ADDR_STR, ESP_BD_ADDR_HEX(addr));
+					esp_ble_remove_bond_device(addr);
+				}
 				ConMan.onSecurityFailed(param->ble_security.auth_cmpl.bd_addr);
 				if(client){
 					client->onPairFailed(param->ble_security.auth_cmpl.bd_addr);

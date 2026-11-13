@@ -19,9 +19,12 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import hashlib
 import os
+import queue
 import re
 import sys
+import tempfile
 import threading
 import time
 import urllib.error
@@ -555,6 +558,248 @@ def write(port: str, plan: FlashPlan, baud: int, on_line, on_progress):
 
 
 # ---------------------------------------------------------------------------------------------
+# Smart write: skip what's already on the chip, and keep pairing/settings (the NVS partition)
+# ---------------------------------------------------------------------------------------------
+
+CHUNK = 0x10000  # compare and write in 64 KB pieces (a multiple of the 4 KB erase sector)
+NVS_SUBTYPES = {0x02, 0x04}  # data partitions: nvs, nvs_keys - Bluetooth bonds and settings live here
+
+
+@dataclass
+class Partition:
+    label: str
+    type: int
+    subtype: int
+    offset: int
+    size: int
+
+
+def parse_partitions(table: bytes) -> list[Partition]:
+    out = []
+    for i in range(0, len(table) - 31, 32):
+        e = table[i:i + 32]
+        if e[:2] != PART_TABLE_MAGIC:
+            break
+        out.append(Partition(e[12:28].split(b"\0")[0].decode("ascii", "replace"), e[2], e[3],
+                             int.from_bytes(e[4:8], "little"), int.from_bytes(e[8:12], "little")))
+    return out
+
+
+def _regions(plan: FlashPlan) -> list[tuple[int, bytes]]:
+    return [(off, p.read_bytes()) for off, p in plan.parts]
+
+
+def _image_table(regions: list[tuple[int, bytes]]) -> Optional[bytes]:
+    for off, data in regions:
+        if off <= PART_TABLE_OFFSET < off + len(data):
+            rel = PART_TABLE_OFFSET - off
+            return data[rel:rel + 0xC00]
+    return None
+
+
+def _cut(regions: list[tuple[int, bytes]], start: int, end: int) -> list[tuple[int, bytes]]:
+    """Removes [start, end) from the regions."""
+    out = []
+    for off, data in regions:
+        r_end = off + len(data)
+        if r_end <= start or off >= end:
+            out.append((off, data))
+            continue
+        if off < start:
+            out.append((off, data[:start - off]))
+        if r_end > end:
+            out.append((end, data[end - off:]))
+    return out
+
+
+@dataclass
+class WriteStats:
+    total: int = 0          # bytes in the image (after leaving NVS out)
+    written: int = 0        # bytes that actually had to be written
+    kept_nvs: bool = False
+    note: str = ""
+
+
+def smart_write(port: str, plan: FlashPlan, baud: int, flash_bytes: int, keep_pairing: bool,
+                on_line, on_progress, compare: bool = True) -> WriteStats:
+    """
+    Writes plan to the chip, but first asks the chip for the MD5 of every 64 KB piece and only writes the
+    pieces that differ - a rebuilt app usually changes a few hundred KB of an 8 MB image, and the ~5 MB of
+    speech and face models never change. With keep_pairing, the NVS partition (Bluetooth bonds, settings) is
+    left alone as long as the image's partition layout matches the chip's.
+    Ends with a hard reset into the new firmware.
+    """
+    import esptool
+    from esptool.cmds import detect_chip
+
+    stats = WriteStats()
+    regions = _regions(plan)
+    sink = _LineSink(on_line)
+    with _esptool_lock, contextlib.redirect_stdout(sink), contextlib.redirect_stderr(sink):
+        try:
+            esp = detect_chip(port, 115200, "default_reset")
+            esp = esp.run_stub()
+            esp.change_baud(baud)
+            esp.flash_set_parameters(flash_bytes)
+
+            if keep_pairing:
+                img_table = _image_table(regions)
+                chip_table = esp.read_flash(PART_TABLE_OFFSET, 0xC00)
+                img_parts = parse_partitions(img_table) if img_table else parse_partitions(chip_table)
+                if img_table is None or img_table[:len(chip_table)] == chip_table:
+                    for p in img_parts:
+                        if p.type == 0x01 and p.subtype in NVS_SUBTYPES:
+                            regions = _cut(regions, p.offset, p.offset + p.size)
+                    stats.kept_nvs = True
+                else:
+                    stats.note = "partition layout changed, so pairing and settings are reset this time"
+
+            chunks = []
+            for off, data in regions:
+                for i in range(0, len(data), CHUNK):
+                    chunks.append((off + i, data[i:i + CHUNK]))
+            stats.total = sum(len(c) for _, c in chunks)
+            changed = []
+            for n, (addr, piece) in enumerate(chunks):
+                if not compare or esp.flash_md5sum(addr, len(piece)) != hashlib.md5(piece).hexdigest():
+                    changed.append((addr, piece))
+                on_progress(n * 20 // max(1, len(chunks)))
+            stats.written = sum(len(c) for _, c in changed)
+            if not changed:
+                esp.hard_reset()
+        except Exception as e:
+            raise EsptoolError(f"Couldn't compare with what's on the chip: {e}") from None
+        finally:
+            sink.write("\n")
+            try:
+                esp._port.close()  # noqa: SLF001 - esptool has no public close
+            except Exception:
+                pass
+
+    if not changed:
+        on_progress(100)
+        return stats
+
+    # Merge neighbouring pieces into runs, one temp file each
+    runs: list[tuple[int, bytearray]] = []
+    for addr, piece in changed:
+        if runs and runs[-1][0] + len(runs[-1][1]) == addr:
+            runs[-1][1].extend(piece)
+        else:
+            runs.append((addr, bytearray(piece)))
+    with tempfile.TemporaryDirectory(prefix="hopper-") as tmp:
+        args = _base_args(port, baud) + ["--before", "default_reset", "--after", "hard_reset", "write_flash", "-z"]
+        args += plan.extra_write_args or ["--flash_mode", "keep", "--flash_freq", "keep", "--flash_size", "keep"]
+        for i, (addr, data) in enumerate(runs):
+            f = Path(tmp) / f"run{i}.bin"
+            f.write_bytes(data)
+            args += [hex(addr), str(f)]
+        run_esptool(args, on_line, lambda p: on_progress(20 + p * 80 // 100))
+    return stats
+
+
+# ---------------------------------------------------------------------------------------------
+# After a flash: wait for the board to run the new firmware
+# ---------------------------------------------------------------------------------------------
+
+def wait_for_boot(port: str, expect_version: str, timeout_s: float, cancel: Optional[threading.Event] = None,
+                  on_wait: Callable[[str], None] = lambda s: None) -> DeviceStatus:
+    """
+    Waits for the board on `port` to print a status line (the robot first has to be switched on by hand: its
+    port only exists while it's powered). Returns the status; .error is set on timeout.
+    """
+    end = time.time() + timeout_s
+    seen_gone = False
+    while time.time() < end:
+        if cancel is not None and cancel.is_set():
+            return DeviceStatus(port, error="cancelled")
+        if not port_exists(port):
+            if not seen_gone:
+                on_wait("off")
+            seen_gone = True
+            time.sleep(0.5)
+            continue
+        on_wait("on")
+        st = read_status(port, timeout_s=7.0)
+        if not st.error:
+            return st
+    return DeviceStatus(port, error="never came back with a status line")
+
+
+def version_matches(board_fw: str, expected: str) -> bool:
+    """The status line carries esp_app_desc's version (32 chars max), the image the full one."""
+    return bool(board_fw) and bool(expected) and (board_fw == expected or expected.startswith(board_fw)
+                                                   or board_fw.startswith(expected))
+
+
+def release_note(board_fw: str, tag: str) -> tuple[str, bool]:
+    """Compares the firmware a board runs with a release tag. Returns (text, update_available)."""
+    if not board_fw or not tag:
+        return "", False
+    if board_fw == tag:
+        return f"up to date ({tag})", False
+    if re.search(r"-\d+-g[0-9a-f]+", board_fw):
+        base = re.sub(r"-\d+-g[0-9a-f]+.*$", "", board_fw)
+        return (f"running a development build based on {base}; latest release is {tag}",
+                base != tag)
+    return f"update available: {tag} (board has {board_fw})", True
+
+
+# ---------------------------------------------------------------------------------------------
+# One-shot console commands (fork firmware): "forget" etc.
+# ---------------------------------------------------------------------------------------------
+
+PORT_BUSY = {"result": "port_busy"}   # another program has the port open
+PORT_LOST = {"result": "port_lost"}   # the board vanished mid-command (switched off or reset)
+
+
+def port_problem(r: Optional[dict], port: str) -> Optional[str]:
+    """A plain-English message when console_command couldn't talk to the board for a port reason, else None."""
+    if r is not None and r.get("result") == "port_busy":
+        return (f"{port} is in use by another program (another Dimension Hopper, a serial monitor, or a script). "
+                "Close it and try again.")
+    if r is not None and r.get("result") == "port_lost":
+        return f"{port} disappeared mid-command - the robot switched off or restarted. Switch it on and try again."
+    return None
+
+
+def console_command(port: str, command: str, reply_tag: str, timeout_s: float = 4.0) -> Optional[dict]:
+    """Sends a console command without resetting the board and returns the fields of the [reply_tag] reply.
+    None = no reply; PORT_BUSY / PORT_LOST (see port_problem) when the port itself was the problem. Never raises."""
+    import serial
+
+    if not port_exists(port):
+        return None
+    with _esptool_lock:
+        s = serial.Serial()
+        s.port, s.baudrate, s.timeout = port, 115200, 0.2
+        s.dtr = False
+        s.rts = False
+        try:
+            s.open()
+        except serial.SerialException:
+            return dict(PORT_BUSY)
+        try:
+            s.write(command.encode() + b"\n")
+            buf, end = b"", time.time() + timeout_s
+            pat = re.compile(r"\[" + re.escape(reply_tag) + r"\]((?:\s+\w+=\S+)+)")
+            while time.time() < end:
+                buf += s.read(512)
+                for line in buf.decode("utf-8", "replace").splitlines():
+                    if m := pat.search(line):
+                        return dict(kv.split("=", 1) for kv in m.group(1).split())
+                buf = buf[-2048:]
+        except serial.SerialException:
+            return dict(PORT_LOST)
+        finally:
+            try:
+                s.close()
+            except serial.SerialException:
+                pass
+    return None
+
+
+# ---------------------------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------------------------
 
@@ -571,12 +816,23 @@ def load_config() -> dict:
     return cfg
 
 
-def save_config(cfg: dict):
+LAST_SAVE_ERROR = ""  # why the last save_config failed ("" = it worked); shown by the self-test
+
+
+def save_config(cfg: dict) -> bool:
+    """Writes the settings. Never raises (a failed save must not break the UI), but remembers why it failed."""
+    global LAST_SAVE_ERROR
     try:
+        text = json.dumps(cfg, indent=2, default=str)  # default=str: a stray non-JSON value can't block the save
         APP_DIR.mkdir(parents=True, exist_ok=True)
-        CONFIG_PATH.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
-    except OSError:
-        pass
+        tmp = CONFIG_PATH.with_suffix(".tmp")
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, CONFIG_PATH)  # atomic: a crash mid-write can't leave a half-written file
+        LAST_SAVE_ERROR = ""
+        return True
+    except Exception as e:  # noqa: BLE001
+        LAST_SAVE_ERROR = f"{type(e).__name__}: {e}"
+        return False
 
 
 def open_folder(path: Path):
@@ -607,6 +863,40 @@ class DeviceStatus:
         except ValueError:
             return None
 
+    @property
+    def kind(self) -> Optional[str]:
+        return {"bot": Kind.BOT, "ctrl": Kind.CTRL}.get(self.fields.get("dev", ""))
+
+    @property
+    def firmware(self) -> str:
+        return self.fields.get("fw", "")
+
+    BAD_RESETS = {"crash": "crashed", "watchdog": "was reset by its watchdog (hung)", "brownout": "browned out (battery sagged)"}
+
+    def health(self) -> tuple[str, bool]:
+        """One line of health figures, and whether anything in it is worrying."""
+        f, bits, worry = self.fields, [], False
+        if "ram" in f:
+            try:
+                ram, low = int(f["ram"]), int(f.get("ram_min", f["ram"]))
+                bits.append(f"RAM {ram} KB free (lowest {low} KB)")
+                worry |= low < 8
+            except ValueError:
+                pass
+        if "up" in f:
+            try:
+                up = int(f["up"])
+                bits.append(f"up {up // 3600}h {up // 60 % 60}m" if up >= 3600 else f"up {up // 60}m {up % 60}s")
+            except ValueError:
+                pass
+        if f.get("reset"):
+            why = self.BAD_RESETS.get(f["reset"])
+            bits.append(f"last start: {why}" if why else f"last start: {f['reset']}")
+            worry |= why is not None
+        if f.get("boots"):
+            bits.append(f"{f['boots']} boots")
+        return "  ·  ".join(bits), worry
+
     def summary(self) -> str:
         if self.error:
             return self.error
@@ -623,11 +913,12 @@ class DeviceStatus:
         return "  ·  ".join(parts) or "status line had no fields"
 
 
-def read_status(port: str, timeout_s: float = 12.0) -> DeviceStatus:
+def read_status(port: str, timeout_s: float = 12.0, exclusive: bool = True) -> DeviceStatus:
     """
     Listens on the port for a [BBSTAT] line WITHOUT resetting the board: DTR/RTS are set inactive before
     opening, so the CH340 auto-reset circuit isn't triggered and the firmware keeps running.
     Needs fork firmware (stock firmware never prints a status line).
+    exclusive=False lets several ports be listened to at once (a scan); it's only safe when nothing is flashing.
     """
     import serial
 
@@ -636,7 +927,7 @@ def read_status(port: str, timeout_s: float = 12.0) -> DeviceStatus:
         res.error = f"{port} isn't there. Is the board switched on?"
         return res
 
-    with _esptool_lock:  # never at the same time as a flash/probe on any port
+    with (_esptool_lock if exclusive else contextlib.nullcontext()):  # never at the same time as a flash/probe
         s = serial.Serial()
         s.port, s.baudrate, s.timeout = port, 115200, 0.25
         s.dtr = False
@@ -650,7 +941,11 @@ def read_status(port: str, timeout_s: float = 12.0) -> DeviceStatus:
             buf = b""
             end = time.time() + timeout_s
             while time.time() < end:
-                buf += s.read(512)
+                try:
+                    buf += s.read(512)
+                except serial.SerialException:  # the port vanished: the robot powered itself off
+                    res.error = f"{port} went away while listening (the board switched off)."
+                    return res
                 for line in buf.decode("utf-8", "replace").splitlines():
                     if m := STATUS_RE.search(line):
                         res.fields = dict(kv.split("=", 1) for kv in m.group(1).split())
@@ -668,23 +963,27 @@ def read_status(port: str, timeout_s: float = 12.0) -> DeviceStatus:
 # Diagnostics session (fork firmware streams "[BBDIAG] ..." while asked to with "diag on")
 # ---------------------------------------------------------------------------------------------
 
-DIAG_RE = re.compile(r"\[(BBDIAG|BBSTAT)\]((?:\s+\w+=\S+)+)")
+DIAG_RE = re.compile(r"\[(BBDIAG|BBSTAT|BBDRIVE|BBFORGET|BBVOICE)\]((?:\s+\w+=\S+)+)")
 
 
 class DiagSession:
     """
-    Holds a serial port open (without resetting the board), keeps the firmware's diagnostics stream alive by
-    re-sending "diag on" every few seconds, and hands every line to on_line(kind, fields, raw_line).
-    kind is "BBDIAG", "BBSTAT" or "" (any other console output). Stop with close().
+    Holds a serial port open (without resetting the board) and hands every line to on_line(kind, fields, raw_line).
+    kind is "BBDIAG", "BBSTAT", "BBDRIVE", "BBFORGET", "BBVOICE" or "" (any other console output). With diag=True it also
+    keeps the firmware's diagnostics stream alive by re-sending "diag on" every few seconds. send() queues a
+    console command (e.g. "drive 60 60"). Stop with close().
     """
 
     KEEPALIVE_S = 5.0
 
-    def __init__(self, port: str, on_line: Callable[[str, dict, str], None], on_end: Callable[[str], None]):
+    def __init__(self, port: str, on_line: Callable[[str, dict, str], None], on_end: Callable[[str], None],
+                 diag: bool = True):
         self.port = port
         self.on_line = on_line
         self.on_end = on_end
+        self.diag = diag
         self._stop = threading.Event()
+        self._out: "queue.Queue[str]" = queue.Queue()
         self._thread = threading.Thread(target=self._run, daemon=True)
 
     def start(self):
@@ -692,6 +991,9 @@ class DiagSession:
 
     def close(self):
         self._stop.set()
+
+    def send(self, command: str):
+        self._out.put(command)
 
     def _run(self):
         import serial
@@ -709,9 +1011,11 @@ class DiagSession:
             last_keepalive = 0.0
             buf = b""
             while not self._stop.is_set():
-                if time.time() - last_keepalive >= self.KEEPALIVE_S:
+                if self.diag and time.time() - last_keepalive >= self.KEEPALIVE_S:
                     s.write(b"diag on\n")
                     last_keepalive = time.time()
+                while not self._out.empty():
+                    s.write(self._out.get_nowait().encode() + b"\n")
                 buf += s.read(1024)
                 *lines, buf = buf.split(b"\n")
                 for raw in lines:
@@ -727,7 +1031,10 @@ class DiagSession:
                 if len(buf) > 4096:
                     buf = buf[-1024:]
             try:
-                s.write(b"diag off\n")
+                if self.diag:
+                    s.write(b"diag off\n")
+                while not self._out.empty():  # e.g. a final "stop" for the motors
+                    s.write(self._out.get_nowait().encode() + b"\n")
             except serial.SerialException:
                 pass
         except serial.SerialException as e:

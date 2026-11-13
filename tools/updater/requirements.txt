@@ -2,3 +2,6 @@ esptool==4.8.1
 pyserial==3.5
 pillow==11.0.0
 pyinstaller==6.11.1
+faster-whisper==1.2.1
+anthropic==2.8.0
+keyring==25.7.0

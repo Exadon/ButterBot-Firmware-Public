@@ -6,6 +6,7 @@
 
 class ScenarioState : public State {
 public:
+	const char* name() const override { return "scenario"; }
     explicit ScenarioState(BBStateMachine* sm);
     ~ScenarioState() override;
 

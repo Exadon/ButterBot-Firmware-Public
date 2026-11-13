@@ -51,5 +51,32 @@ jobs:
           files: ${{ steps.name.outputs.file }}
           generate_release_notes: true
           body: |
-            Flash with **Dimension Hopper** (`tools/updater`): pick "Latest GitHub release" and enter `${{ github.repository }}`.
+            Flash with **Dimension Hopper** (`DimensionHopper.exe`, attached below): pick "Latest GitHub release" and this repository.
             Or manually: `esptool.py -c esp32s3 -b 921600 -p <PORT> write_flash 0 ${{ steps.name.outputs.file }}`
+
+  # Dimension Hopper: the Windows app, built on a Windows runner and attached to the same release
+  hopper:
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Build DimensionHopper.exe
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File tools/updater/build_exe.ps1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DimensionHopper.exe
+          path: tools/updater/dist/DimensionHopper.exe
+          if-no-files-found: error
+
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: tools/updater/dist/DimensionHopper.exe

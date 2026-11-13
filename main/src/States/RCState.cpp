@@ -1,4 +1,7 @@
 #include "RCState.h"
+#include "Util/MemMark.h"
+#include <cmath>
+#include <algorithm>
 #include <Periphery/WiFi.h>
 #include <Services/Audio/Audio.h>
 #include <Services/Audio/AACAudioGenerator.h>
@@ -36,7 +39,9 @@ RCState::RCState(BBStateMachine* sm) : State(sm){
 	sm->bindState(com->OnDriveData, this, &RCState::onDriveData);
 	sm->bindState(com->OnConnStatus, this, &RCState::onBTDisconnect);
 
+	MemMark::mark("rc: start");
 	wifi = newObject<WiFi>(sm);
+	MemMark::mark("rc: wifi");
 	if(wifi == nullptr){
 		CMF_LOG(RCState, Warning, "WiFi is nullptr in postInitProperties.");
 		return;
@@ -52,8 +57,10 @@ RCState::RCState(BBStateMachine* sm) : State(sm){
 	sm->bindState(wifiSta->OnStationEvent, this, &RCState::onWifiDisconnect);
 
 	wifiSta->connect();
+	MemMark::mark("rc: sta");
 
 	feed = newObject<Feed>(sm);
+	MemMark::mark("rc: feed");
 }
 
 RCState::~RCState(){
@@ -128,63 +135,40 @@ void RCState::onDriveData(DriveData driveData){
 		return;
 	}
 
+	/*
+	 * Proportional ("arcade") mixing. The stock code snapped the stick to one of 8 directions with fixed
+	 * wheel ratios (and hit full speed at half deflection), so steering jumped between "straight", "hard
+	 * curve" and "spin". Here speed follows how far the stick is pushed and turning blends continuously.
+	 */
 	static constexpr float MaxSpeed = 100.0f;
+	static constexpr float MinDrive = 30.0f; // below this the motors stall, so any real push starts here
+	static constexpr float TurnGain = 0.5f;  // how hard the stick's sideways part steers (1 = pivot on a wheel at 45 deg)
 
-	// Calculate motor speeds based on joystick positions
-	glm::vec2 direction = { driveData.joystickX, driveData.joystickY };
-	const float speed = glm::clamp(glm::length(direction), 0.0f, MaxSpeed);
-	direction = glm::normalize(direction);
+	const float x = glm::clamp(static_cast<float>(driveData.joystickX), -100.0f, 100.0f);
+	const float y = glm::clamp(static_cast<float>(driveData.joystickY), -100.0f, 100.0f);
+	const float ax = std::fabs(x);
 
-	float angle = glm::degrees(glm::angle(direction, { 0.0, 1.0 }));
-
-	if(direction.x < 0){
-		angle = 360.0f - angle;
-	}
-
-	static constexpr float circParts = 360.0f / 8.0f;
-
-	float calcAngle = angle + circParts / 2.0f;
-	if(calcAngle >= 360){
-		calcAngle -= 360.0f;
-	}
-	const uint8_t number = std::floor(calcAngle / circParts);
-
-	float leftSpeed = 0.0f;
-	float rightSpeed = 0.0f;
-
-	if(number == 0){
-		leftSpeed = rightSpeed = 1.0f;
-	}
-	else if(number == 1){
-		leftSpeed = 1.0f;
-		rightSpeed = 0.2f;
-	}
-	else if(number == 2){
-		leftSpeed = 1.0f;
-		rightSpeed = -1.0f;
-	}
-	else if(number == 3){
-		leftSpeed = -1.0f;
-		rightSpeed = -0.2f;
-	}
-	else if(number == 4){
-		leftSpeed = rightSpeed = -1.0f;
-	}
-	else if(number == 5){
-		leftSpeed = -0.2f;
-		rightSpeed = -1.0f;
-	}
-	else if(number == 6){
-		leftSpeed = -1.0f;
-		rightSpeed = 1.0f;
-	}
-	else if(number == 7){
-		leftSpeed = 0.2f;
-		rightSpeed = 1.0f;
+	// Turn direction: normal when going forward, mirrored when reversing (like the stock 8-way mapping,
+	// where stick back-right swings the robot the same way a car's rear does). Blend from +1 at the sideways
+	// position to -1 at 45 degrees back, so there's no jump when the stick crosses the horizontal.
+	float turnSign = y >= 0.0f ? 1.0f : -1.0f;
+	if(ax >= 1.0f){
+		turnSign = glm::clamp(1.0f + 2.0f * y / ax, -1.0f, 1.0f);
 	}
 
-	leftSpeed = std::clamp(leftSpeed * speed * 2.0f, -100.0f, 100.0f);
-	rightSpeed = std::clamp(rightSpeed * speed * 2.0f, -100.0f, 100.0f);
+	float leftSpeed = y + TurnGain * turnSign * x;
+	float rightSpeed = y - TurnGain * turnSign * x;
+
+	// Scale so the faster wheel runs at the stick's deflection (mapped onto MinDrive..MaxSpeed)
+	const float peak = std::max(std::fabs(leftSpeed), std::fabs(rightSpeed));
+	const float deflection = glm::clamp(std::sqrt(x * x + y * y) / 100.0f, 0.0f, 1.0f);
+	if(peak < 1e-3f || deflection < 1e-3f){
+		baseBoard->setMotors(0, 0);
+		return;
+	}
+	const float target = MinDrive + (MaxSpeed - MinDrive) * deflection;
+	leftSpeed = glm::clamp(leftSpeed / peak * target, -MaxSpeed, MaxSpeed);
+	rightSpeed = glm::clamp(rightSpeed / peak * target, -MaxSpeed, MaxSpeed);
 
 	baseBoard->setMotors(leftSpeed, rightSpeed);
 }

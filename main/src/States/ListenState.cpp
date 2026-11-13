@@ -4,6 +4,7 @@
 #include "Audio/SpeechAudioGen.h"
 #include "Audio/SpeechAudioSource.h"
 #include "Audio/SpeechGen.h"
+#include "Audio/VoicePreset.h"
 #include <Core/Application.h>
 #include <Statics/ApplicationStatics.h>
 #include <Phrases.h>
@@ -29,6 +30,12 @@
 #include "Services/ScenarioRoutineService.h"
 #include "Services/IRStorage.h"
 #include "Routines/IRActionRoutine.h"
+#include "Services/HomeWiFi.h"
+#include "Services/BrainLink.h"
+#include "Audio/VoicePreset.h"
+#include "Util/MemMark.h"
+#include <atomic>
+#include <freertos/task.h>
 #include "ScenarioRoutineMappings.h"
 
 DEFINE_LOG(ListenState)
@@ -61,7 +68,10 @@ static void playPhraseBlocking(const Application* app, Phrase phrase){
 static const char* TAG = "ListenState";
 
 namespace {
-    constexpr uint32_t IntroWindowMs = 2500;
+    // Fork: the prompt ("Yes?", "I'm listening"...) is the cue to speak, so it must not end before the recogniser
+    // is ready. Loading the model and building the command list takes ~3.0-3.1 s; with the old 2500 ms the prompt
+    // ended ~0.5 s early and the start of whatever the user said straight after it was never heard.
+    constexpr uint32_t IntroWindowMs = 3200;
 
     struct SoundEffect { const char* path; uint16_t durationMs; };
     struct StartPrompt { const char* text; uint16_t durationMs; };
@@ -138,11 +148,12 @@ namespace {
         }
 
         const StartPrompt& prompt = StartPrompts[rand() % std::size(StartPrompts)];
-        const uint32_t budget = prompt.durationMs >= IntroWindowMs ? 0 : IntroWindowMs - prompt.durationMs;
+        // Fork: durations were measured with the stock voice; a faster/slower voice preset scales them, and the
+        // prompt must still end when the recogniser is ready.
+        const uint32_t promptMs = static_cast<uint32_t>(prompt.durationMs * Voice::current().stretch / Voice::StockStretch);
+        const uint32_t budget = promptMs >= IntroWindowMs ? 0 : IntroWindowMs - promptMs;
 
         const SfxGroup& group = SfxGroups[rand() % std::size(SfxGroups)];
-
-        const uint32_t preloadStart = millis();
 
         const size_t maxAttempts = group.clips.size() * 4;
 
@@ -184,12 +195,123 @@ namespace {
 
 std::vector<AudioFrontend::Phrase> ListenState::phrases;
 
+/*
+ * Fork: the AI brain path. While the intro plays, a worker task joins the home WiFi and finds the brain on the
+ * owner's PC; the robot then records one utterance (AFE + VAD only, no offline recognizer - faster and lighter),
+ * the worker sends it and waits for the reply, and ListenState::tick() speaks it / runs the chosen action.
+ * The worker always switches WiFi off when it's done. If WiFi or the brain isn't there, the robot falls back to
+ * the offline command list for this listen.
+ */
+struct ListenState::AiSession {
+	HomeWiFi wifi;
+	HomeWiFi::Config cfg;
+	std::atomic<int> link{ 0 };        // 0 connecting, 1 ready, -1 failed
+	const char* linkError = "";
+	std::shared_ptr<BrainLink::Recording> rec = std::make_shared<BrainLink::Recording>();
+	std::atomic<bool> cancel{ false };
+	std::atomic<bool> replied{ false };
+	BrainLink::Reply reply;
+	uint32_t ip = 0;
+	uint16_t port = 0;
+	char voice[16] = {};
+	bool handled = false;
+	bool recordingStopped = false;
+	uint32_t heardAt = 0;       // when "Heard" went to the controller
+	bool thinkingShown = false; // "Thinking" sent
+};
+
+namespace {
+	std::atomic<bool> aiWorkerRunning{ false };
+
+	/*
+	 * After the AI brain fails, listens skip WiFi for a while and go straight to the built-in commands. Loading the
+	 * offline recognizer right after a WiFi session (same listen) could run internal RAM to zero, after which WiFi
+	 * wouldn't start again until a reboot - so a failed AI listen just ends, and the next press is the offline one.
+	 */
+	constexpr uint32_t AiCooldownMs = 2 * 60 * 1000;        // after a WiFi problem (worth retrying soon)
+	constexpr uint32_t BrainOffCooldownMs = 10 * 60 * 1000; // brain not there: usually the PC or the app is just off
+	uint32_t aiCooldownUntil = 0;
+
+	bool aiCoolingDown(){
+		return aiCooldownUntil != 0 && (int32_t) (millis() - aiCooldownUntil) < 0;
+	}
+
+	void aiWorker(void* arg){
+		auto* holder = static_cast<std::shared_ptr<ListenState::AiSession>*>(arg);
+		std::shared_ptr<ListenState::AiSession> s = *holder;
+		delete holder;
+
+		const HomeWiFi::Result r = s->wifi.start(s->cfg, 7000);
+		if(r != HomeWiFi::Result::Ok){
+			s->linkError = HomeWiFi::resultName(r);
+			s->link = -1;
+		}else{
+			uint32_t ip = s->cfg.brainIp;
+			uint16_t port = s->cfg.brainPort;
+			if(!BrainLink::reachable(ip, port, 700)){
+				if(BrainLink::discover(ip, port, 1600)){
+					HomeWiFi::saveBrain(ip, port);
+				}else{
+					ip = 0;
+				}
+			}
+			if(ip == 0){
+				s->linkError = "brain_not_found";
+				s->link = -1;
+			}else{
+				s->ip = ip;
+				s->port = port;
+				s->link = 1;
+				printf("[BBAI] event=linked rssi=%d\n", s->wifi.rssi());
+				// Wait for the utterance (the AFE proc task fills s->rec), then ask the brain
+				const uint32_t start = millis();
+				while(!s->rec->done && !s->cancel && millis() - start < 20000){
+					vTaskDelay(pdMS_TO_TICKS(50));
+				}
+				if(!s->cancel){
+					if(!s->rec->heardSpeech){
+						s->reply.error = "heard_nothing";
+					}else{
+						MemMark::mark("ai: sending");
+						s->reply = BrainLink::converse(s->ip, s->port, s->rec->pcm.data(), s->rec->pcm.size(), s->voice, 25000);
+					}
+					s->replied = true;
+				}
+			}
+		}
+		s->wifi.stop();
+		aiWorkerRunning = false;
+		vTaskDelete(nullptr);
+	}
+}
+
 void ListenState::preallocate(){
 	phrases.reserve(activations.size() * 2);
 }
 
 ListenState::ListenState(BBStateMachine* sm) : State(sm){
 	phrases.clear();
+
+    // Fork: AI brain path - start joining the WiFi right away, in parallel with the intro
+    {
+        const HomeWiFi::Config cfg = HomeWiFi::load();
+        if(cfg.aiEnabled && aiCoolingDown()){
+            printf("[BBAI] event=skipped why=cooldown s_left=%u\n", (unsigned) ((aiCooldownUntil - millis()) / 1000));
+        }
+        if(cfg.aiEnabled && !cfg.ssid.empty() && !aiWorkerRunning && !aiCoolingDown()){
+            ai = std::make_shared<AiSession>();
+            ai->cfg = cfg;
+            strncpy(ai->voice, Voice::current().name, sizeof(ai->voice) - 1);
+            aiWorkerRunning = true;
+            auto* holder = new std::shared_ptr<AiSession>(ai);
+            // Internal-RAM stack: WiFi start writes PHY calibration to flash
+            if(xTaskCreatePinnedToCore(aiWorker, "bbai", 6144, holder, 4, nullptr, 0) != pdPASS){
+                delete holder;
+                aiWorkerRunning = false;
+                ai.reset();
+            }
+        }
+    }
 
     const Application* app = ApplicationStatics::getApplication();
 
@@ -227,7 +349,27 @@ ListenState::ListenState(BBStateMachine* sm) : State(sm){
         return;
     }
 
-	audioFrontend->loadModel();
+    if(ai){
+        // Record as soon as the intro ends - WiFi keeps connecting in the background and the worker sends the
+        // recording once the brain is reachable, so the owner never waits for the WiFi. tick() handles failures.
+        audioFrontend->loadModel(false);
+        audioFrontend->setMode(AudioFrontend::Mode::Off);
+        if(Audio* audio = app->getService<Audio>()){
+            audio->waitEnd(portMAX_DELAY);
+        }
+        audioFrontend->startRecording(ai->rec);
+        return;
+    }
+
+    startOffline(app);
+}
+
+void ListenState::startOffline(const Application* app){
+    AudioFrontend* audioFrontend = app->getService<AudioFrontend>();
+    if(audioFrontend == nullptr){
+        return;
+    }
+    audioFrontend->loadModel();
 
     audioFrontend->setMode(AudioFrontend::Mode::Off);
 
@@ -255,8 +397,65 @@ ListenState::ListenState(BBStateMachine* sm) : State(sm){
     }
 }
 
+// What the robot says when the brain can't be used: what's wrong, and whether it needs plugging into Dimension Hopper
+static bool brainProblem(const std::string& why){
+    // Nobody answering on the PC side - most often Dimension Hopper simply isn't running (stopped, closed, PC asleep)
+    return why == "brain_not_found" || why == "brain_unreachable" || why == "no_reply" || why == "empty_reply";
+}
+
+static uint32_t cooldownFor(const std::string& why){
+    return brainProblem(why) ? BrainOffCooldownMs : AiCooldownMs;
+}
+
+// What the robot says when the brain can't be used. Problems the owner must fix get a "plug me in"; the brain just
+// being off is normal and gets a calm one-liner.
+static const char* problemSentence(const std::string& why){
+    if(why == "network_not_found" || why == "not_configured")
+        return "I can't find my WiFi network. Plug me into Dimension Hopper to check my WiFi settings.";
+    if(why == "wrong_password")
+        return "My WiFi password doesn't work any more. Plug me into Dimension Hopper and send it again.";
+    if(brainProblem(why))
+        return "My brain is offline, so I'm using my backup circuits. Ask me again.";
+    return "I can't reach the WiFi right now. Ask me again, I'll use my backup circuits.";
+}
+
+void ListenState::fallBackToOffline(const Application* app, const char* why){
+    printf("[BBAI] event=offline why=%s cooldown_s=%u\n", why, (unsigned) (cooldownFor(why) / 1000));
+    AudioFrontend* audioFrontend = app->getService<AudioFrontend>();
+    if(audioFrontend != nullptr){
+        audioFrontend->setMode(AudioFrontend::Mode::Off);
+        audioFrontend->unloadModel();
+    }
+    ai->cancel = true;
+    ai->handled = true;
+    HomeWiFi::setLastProblem(why);
+    aiCooldownUntil = millis() + cooldownFor(why);
+    if(aiCooldownUntil == 0) aiCooldownUntil = 1;
+    // Let the worker switch WiFi off before anything else needs the memory
+    const uint32_t start = millis();
+    while(aiWorkerRunning && millis() - start < 5000){
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+    MemMark::mark("ai: fallback");
+    if(com != nullptr){
+        ListenData listenData{.phase = ListenData::Phase::NotUnderstand};
+        com->sendData(BB::State::Listen, BB::Action::Listen{}, listenData);
+    }
+    if(Audio* audio = app->getService<Audio>()){
+        if(ServiceLocator::SpeechAudioGenInstance && ServiceLocator::SpeechGenInstance){
+            audio->play(ServiceLocator::SpeechAudioGenInstance.get(),
+                        std::make_unique<SpeechAudioSource>(SpeechGen::InputType::Text, problemSentence(why)));
+            audio->waitEnd(portMAX_DELAY);
+        }
+    }
+    sm->transitionTo<IdleState>();
+}
+
 ListenState::~ListenState(){
     // Event bindings are dropped by BBStateMachine::unbindStateEvents() after this dtor runs.
+    if(ai){
+        ai->cancel = true; // the worker switches WiFi off by itself
+    }
     const Application* app = ApplicationStatics::getApplication();
     if(AudioFrontend* audioFrontend = app->getService<AudioFrontend>()){
         audioFrontend->setMode(AudioFrontend::Mode::Off);
@@ -266,6 +465,93 @@ ListenState::~ListenState(){
     if(timedOut){
         playPhraseBlocking(app, Phrase::ListeningTimeout);
     }
+}
+
+int64_t ListenState::getDynamicTickInterval() const{
+    return ai ? 50 : -1;
+}
+
+void ListenState::tick(float){
+    if(!ai || ai->handled){
+        return;
+    }
+    const Application* app = ApplicationStatics::getApplication();
+    AudioFrontend* audioFrontend = app->getService<AudioFrontend>();
+
+    if(ai->link == -1 && !ai->replied){
+        fallBackToOffline(app, ai->linkError);
+        return;
+    }
+    if(ai->rec->done && !ai->recordingStopped){
+        ai->recordingStopped = true;
+        if(audioFrontend){
+            audioFrontend->setMode(AudioFrontend::Mode::Off);
+            audioFrontend->unloadModel(); // ~17 KB of internal RAM back before WiFi has to send
+        }
+        printf("[BBAI] event=recorded ms=%u speech=%d\n", (unsigned) (ai->rec->pcm.size() / 16), ai->rec->heardSpeech ? 1 : 0);
+        MemMark::mark("ai: recorded");
+        if(com != nullptr && ai->rec->heardSpeech){
+            ListenData listenData{.phase = ListenData::Phase::Heard};
+            com->sendData(BB::State::Listen, BB::Action::Listen{}, listenData);
+            ai->heardAt = millis();
+        }
+    }
+    // Controller: "Heard" for a moment, then "Thinking" while the PC works (once the robot is talking to it)
+    if(ai->heardAt != 0 && !ai->thinkingShown && ai->link == 1 && millis() - ai->heardAt >= 1200 && com != nullptr){
+        ai->thinkingShown = true;
+        ListenData listenData{.phase = ListenData::Phase::Thinking};
+        com->sendData(BB::State::Listen, BB::Action::Listen{}, listenData);
+    }
+    if(!ai->replied){
+        return;
+    }
+    ai->handled = true;
+    const BrainLink::Reply& r = ai->reply;
+    printf("[BBAI] event=reply ok=%d error=%s\n", r.ok ? 1 : 0, r.error.empty() ? "none" : r.error.c_str());
+    if(r.ok) HomeWiFi::setLastProblem("none");
+    if(!r.heard.empty()) printf("BBAI heard: %s\n", r.heard.c_str());
+    if(!r.say.empty()) printf("BBAI says: %s\n", r.say.c_str());
+    if(!r.action.empty()) printf("BBAI does: %s\n", r.action.c_str());
+
+    if(!r.ok){
+        if(r.error == "heard_nothing"){
+            timedOut = true; // the dtor plays the usual "didn't hear you" line
+        }else{
+            HomeWiFi::setLastProblem(r.error.c_str());
+            aiCooldownUntil = millis() + cooldownFor(r.error);
+            if(aiCooldownUntil == 0) aiCooldownUntil = 1;
+            if(Audio* audio = app->getService<Audio>()){
+                audio->play(ServiceLocator::SpeechAudioGenInstance.get(),
+                            std::make_unique<SpeechAudioSource>(SpeechGen::InputType::Text, problemSentence(r.error)));
+                audio->waitEnd(portMAX_DELAY);
+            }
+        }
+        if(com != nullptr){
+            ListenData listenData{.phase = ListenData::Phase::NotUnderstand};
+            com->sendData(BB::State::Listen, BB::Action::Listen{}, listenData);
+        }
+        sm->transitionTo<IdleState>();
+        return;
+    }
+
+    if(!r.say.empty()){
+        if(Audio* audio = app->getService<Audio>()){
+            audio->play(ServiceLocator::SpeechAudioGenInstance.get(),
+                        std::make_unique<SpeechAudioSource>(SpeechGen::InputType::Text, r.say));
+            audio->waitEnd(portMAX_DELAY);
+        }
+    }
+
+    if(!r.action.empty()){
+        for(size_t i = 0; i < activations.size(); ++i){
+            if(r.action == activations[i].string){
+                onPhrase(true, static_cast<int>(i), r.action, 1.0f);
+                return;
+            }
+        }
+        printf("[BBAI] event=unknown_action\n");
+    }
+    sm->transitionTo<IdleState>();
 }
 
 void ListenState::onRC(){

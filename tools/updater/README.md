@@ -2,22 +2,75 @@
 
 ![portal](portal.png)
 
-A one-window firmware updater for **ButterBot** and its **controller**, with a mad-science look. It wraps `esptool`, so nobody has to type `write_flash` again.
+A one-window Windows app for **ButterBot** and its **controller**, with a mad-science look. It updates both boards,
+sets them up, lets you test and drive them, and runs the **AI brain** that gives ButterBot real conversations.
 
-## What it does
+Part of the ButterBot community fork - see the [robot firmware](../../README.md) for the overview and the
+[controller firmware](https://github.com/Exadon/ButterBotCtrl-Firmware-Public).
+Every button has a tooltip: hover over it to see what it does.
 
-- **Finds the boards.** *Scan dimensions* probes every USB serial port (the robot shows up as a CH340, Bluetooth ports are skipped). Both boards are ESP32-S3, so the probe tells them apart by flash size: 16 MB is the robot, 4 MB is the controller. Each board is dropped into the right slot automatically.
-- **Keeps the robot awake.** The robot's USB chip runs off the robot's own power, and its firmware switches the robot off if it boots without the power button held. So after a probe or backup the chip stays parked in bootloader mode instead of rebooting. Turn the robot on (hold power ~2 s) *before* scanning.
-- **Picks a payload per board:**
-  - *Latest GitHub release*: pick from a dropdown with the stock CircuitMess repo and this fork (`Exadon/ButterBot-Firmware-Public`). A **STOCK** / **FORK** badge shows which you're about to flash, and the confirmation dialog spells it out too. Add other repos under **Repos…** (`owner/name` or a GitHub URL); they're saved and appear in the dropdown. Downloads are cached.
-  - *Local .bin / backup*: any merged full-flash image written at `0x0`, including a backup this tool made. A badge says what it is (**BACKUP** with its date, **RELEASE**, **IMAGE**), and the firmware version inside it is shown.
-  - *idf.py build folder*: point it at a project's `build/` folder and it flashes every part listed in `flasher_args.json` (bootloader, partition table, app, SPIFFS, models). **Use this fork's build** picks `<repo>/build` in one click (badge: **FORK BUILD**). This is the dev loop for the fork.
-- **Refuses foot-guns.** A file flashed at `0x0` must be a complete image: bootloader, a partition table at `0x8000` and an app at `0x10000`. A bare app `.bin` from a build folder, a lone bootloader or a data partition is marked **NOT FLASHABLE** (writing one at `0x0` bricks the board until it's reflashed). It also won't put a robot image on the controller or the other way round (judged by the project name inside the image), and won't write past the end of the chip's flash.
-- **Backs up first** (on by default). The whole flash is read to `%LOCALAPPDATA%\DimensionHopper\backups`. If the backup comes back short, it doesn't flash.
-- **Verifies** every region after writing (esptool MD5 check), then reboots the board.
-- **Update both** runs the robot and then the controller in one go.
+## Tabs
 
-After a robot flash, hold its power button to turn it on: the new firmware also powers off if the button isn't held at boot. Windows may hand the robot a different COM number after it power-cycles; just Scan again.
+### Flash
+- **Scan dimensions** finds the robot and the controller on USB and tells them apart (it listens for their status
+  line first, and only probes boards that stay silent).
+- **Pick a payload per board:**
+  - *Latest GitHub release* from the stock CircuitMess repository or this fork (a **STOCK** / **FORK** badge shows
+    which), plus any repository you add under **Repos…**. Downloads are cached.
+  - *Local .bin / backup*: a full-flash image, including a backup this app made.
+  - *idf.py build folder*: everything a build produced. **Use this fork's build** picks it in one click.
+- **Only write what changed** (on by default): compares the board with the image in 64 KB pieces and skips what's
+  already there - a typical firmware update takes about a minute.
+- **Keep pairing & settings** (on by default): pairing, voice, WiFi and AI settings survive the update.
+- **Refuses foot-guns**: partial images, a robot image on the controller (or the other way round), images bigger than
+  the chip.
+- **Backs up first** (optional) to `%LOCALAPPDATA%\DimensionHopper\backups`, **verifies** every region after writing,
+  then **waits for the board to boot** and checks it's running the version it was given.
+- **Update both** does the robot and then the controller.
+- Per board: **Status** (battery, charging, link, firmware, free memory, why it last restarted), **Probe**, **Wake**,
+  **Forget pairing**.
+
+The robot only stays on while its power button was held at start-up, so after a flash switch it on again (hold power
+about 1 second).
+
+### Guide
+Every voice command and the controller's buttons, with pictures.
+
+### Personalize
+Settings that live on the robot. Right now: its **voice** - click one of the eight presets to switch to it and hear a
+sample. Classic is the stock voice.
+
+### Diagnostics
+Live readings from either board (sensors, motors, battery, link, motion events) and a **drive pad**: hold an arrow (or
+use the arrow keys / WASD) to drive the robot. It won't drive forward into an obstacle or off an edge, and stops when
+you let go.
+
+### Console
+The board's raw log with filters, a table of what the robot heard and matched, a box to send console commands, and
+**Save log…**.
+
+### AI - real conversations
+Four steps, each with a lamp (NOT SET UP / TO DO / WORKING… / READY / PROBLEM). Steps 2-4 unlock once step 1 works.
+
+1. **Robot WiFi** - **Scan** lists the networks the robot can see (2.4 GHz only), pick yours, type the password,
+   **Send to robot**, then **Test robot WiFi**. Tick *remember on this PC* to keep the password in Windows Credential
+   Manager. The line underneath shows this PC's address, which is given to the robot so it finds the brain even when
+   the robot and the PC are on different sub-networks (common with mesh WiFi).
+2. **Hearing** - loads [Whisper](https://github.com/SYSTRAN/faster-whisper) on this PC (base.en, about 140 MB,
+   downloaded once from Hugging Face - **Source…** can point it at a mirror or a folder instead).
+3. **Thinking** - [Ollama](https://ollama.com), free and local. Install it, run `ollama pull llama3.1:8b` (or
+   `llama3.2` on PCs without a strong graphics card), press **Check**, and **Try it** with a typed message.
+4. **Turn it on** - **Start AI conversations** starts the brain and, if the robot is plugged in, sets it up to use it.
+   The brain warms up (it runs Whisper once and has the model read ButterBot's instructions) before showing READY, so
+   the first answer is as quick as the rest. After the first successful conversation it starts by itself whenever
+   Dimension Hopper opens.
+
+The **Conversations** table shows what you said, ButterBot's answer, the action, and how long the upload, hearing and
+thinking took. Every conversation is also logged to `%LOCALAPPDATA%\DimensionHopper\brain_log.jsonl`.
+
+Privacy: your voice goes from the robot to this PC over your own network and is turned into text here; with Ollama the
+AI runs here too. Nothing is sent to the internet. The WiFi password goes to the robot over USB and, if you choose,
+into Windows Credential Manager - never into a plain file.
 
 ## Build the exe
 
@@ -25,7 +78,8 @@ After a robot flash, hold its power button to turn it on: the new firmware also 
 powershell -ExecutionPolicy Bypass -File build_exe.ps1
 ```
 
-This produces `dist\DimensionHopper.exe`: a single file with no console and no Python needed on the target PC.
+This produces `dist\DimensionHopper.exe`: a single file with no console and no Python needed on the target PC (it's
+large, about 110 MB, because it includes the speech-to-text engine).
 
 ## Run from source
 
@@ -34,13 +88,16 @@ py -3 -m venv .venv; .\.venv\Scripts\pip install -r requirements.txt
 .\.venv\Scripts\python dimension_hopper.py
 ```
 
-Dev flags: `--selftest <out.txt>` checks the bundled esptool and stubs (handy for the windowed exe), and `--screenshot <out.png> [secs]` renders the window and exits.
+Dev flags: `--selftest <out.txt>` checks the bundled esptool, stubs and AI libraries (handy for the windowed exe).
 
 ## Files
 
 | File | Purpose |
 |---|---|
-| `hopper_core.py` | Ports, probe, GitHub releases, image checks, backup and write. No UI, so it can be tested headless. |
-| `dimension_hopper.py` | Tk UI: the animated portal, device slots, job runner and log. |
+| `hopper_core.py` | Ports, probe, status, GitHub releases, image checks, quick flash, backup, console commands. No UI. |
+| `dimension_hopper.py` | Tk UI: the animated portal, device slots, job runner, log; hosts the tabs. |
+| `guide_tab.py`, `personalize_tab.py`, `diag_tab.py`, `console_tab.py`, `ai_tab.py` | The tabs. |
+| `brain.py` | The AI brain: Whisper, Ollama, the robot protocol and server, persona and timings. |
+| `tooltip.py` | Hover help for every button. |
 | `build_exe.ps1` | Reproducible PyInstaller build. |
 | `make_art.py` | Regenerates the art: `portal.ico`/`portal.png` (app icon), `bot.png` and `controller.png` (slot icons). |

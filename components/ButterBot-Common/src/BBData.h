@@ -45,6 +45,9 @@ struct BB {
 			PhoneStopMusic,
 			WhatsThis,
 			SettingsActivity,
+			// --- fork additions: append only, so stock firmware keeps the same numbering ---
+			Chat,       // ChatData: one of the chat voice lines (Phrase::Chat reply index)
+			OpenPortal, // OpenPortalData: controller plays a portal animation
 		} scenario;
 
 		enum class Listen {
@@ -62,7 +65,9 @@ struct BBData {}; // Empty struct. All action-related data structs must inherit 
 
 struct ListenData : BBData {
 	enum class Phase : uint8_t {
-		Listening, NotUnderstand, Abort
+		Listening, NotUnderstand, Abort,
+		Heard,   // fork: AI mode - the sentence is recorded
+		Thinking // fork: AI mode - waiting for the brain on the PC
 	} phase;
 };
 
@@ -413,6 +418,16 @@ struct SettingsSyncData : BBData {
 	FrontSensorMode frontSensor;
 	BottomSensorMode bottomSensor;
 	ActivityMode activityMode;
+};
+
+// --- fork additions ---------------------------------------------------------------------------------
+
+struct ChatData : BBData {
+	uint8_t id; // index into Phrase::Chat (the reply that was spoken)
+};
+
+struct OpenPortalData : BBData {
+	uint16_t durationMs;
 };
 
 #endif //BUTTERBOT_COMMON_ACTIONDATA_H
