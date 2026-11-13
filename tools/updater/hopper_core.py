@@ -468,9 +468,12 @@ class Release:
     asset_name: str
     url: str
     size: int
+    asset_id: int = 0  # GitHub's id for this upload: a re-uploaded file with the same name gets a new one
 
     def cache_path(self) -> Path:
-        return CACHE_DIR / self.repo.replace("/", "__") / self.tag / self.asset_name
+        # Keyed by the upload's id too, so a release file that was replaced is downloaded again, never served stale
+        name = f"{self.asset_id}-{self.asset_name}" if self.asset_id else self.asset_name
+        return CACHE_DIR / self.repo.replace("/", "__") / self.tag / name
 
 
 def _http_json(url: str):
@@ -496,7 +499,7 @@ def latest_release(repo: str) -> Release:
     if not bins:
         raise ValueError(f"{repo} {data.get('tag_name', '?')} has no .bin asset")
     a = max(bins, key=lambda a: a["size"])
-    return Release(repo, data["tag_name"], a["name"], a["browser_download_url"], a["size"])
+    return Release(repo, data["tag_name"], a["name"], a["browser_download_url"], a["size"], int(a.get("id") or 0))
 
 
 def download(rel: Release, on_progress=lambda p: None, cancel: Optional[threading.Event] = None) -> Path:
