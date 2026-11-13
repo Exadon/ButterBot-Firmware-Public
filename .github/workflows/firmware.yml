@@ -29,9 +29,10 @@ jobs:
         with:
           esp_idf_version: v5.5.3
           target: esp32s3
-          # merge-bin writes build/ButterBot-merged.bin: bootloader, partitions, app, SPIFFS and all models,
-          # one file flashed at 0x0 (same layout as the official CircuitMess releases)
-          command: idf.py build && idf.py merge-bin -o ButterBot-merged.bin
+          # scripts/ci_build.sh pins the component manager (see the script for why), builds, checks the build kept
+          # the committed sdkconfig, then merge-bin writes build/ButterBot-merged.bin: bootloader, partitions, app,
+          # SPIFFS and all models, one file flashed at 0x0 (same layout as the official CircuitMess releases)
+          command: bash scripts/ci_build.sh
 
       - name: Name the image
         id: name
