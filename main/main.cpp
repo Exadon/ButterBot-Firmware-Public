@@ -80,6 +80,8 @@
 #include "JigHWTest/JigHWTest.h"
 #include "Services/GasConfigureService.h"
 #include "FaceDet.h"
+#include <Devices/Camera.h>
+#include <img_converters.h>
 #include "Util/ServiceLocator.h"
 #include "Audio/SoundEffects.h"
 #include <esp_heap_caps.h>
@@ -454,6 +456,7 @@ private:
 					else if(line == "wifi clear") runFlashJob([]{ HomeWiFi::clear(); printWifi(); });
 					else if(line == "wifi test") testWifi();
 					else if(line == "wifi scan") scanWifi();
+					else if(line == "cam") camFrame();
 					else if(line == "srtest" || line.rfind("srtest ", 0) == 0) srTest(line.c_str() + 6);
 					else if(line.rfind("wifi bench ", 0) == 0) benchWifi(line.c_str() + 11);
 					else if(line.rfind("brain ", 0) == 0) setBrain(line.c_str() + 6);
@@ -937,6 +940,93 @@ private:
 			delete sa;
 			vTaskDelete(nullptr);
 		}, "bbsrtest", 6144, sa, 3, nullptr, 0);
+	}
+
+	/*
+	 * Fork: "cam" - one camera frame for Dimension Hopper's Diagnostics tab. Replies with one line:
+	 * [BBCAM] w=<px> h=<px> n=<jpeg bytes> jpg=<base64 JPEG>   or   [BBCAM] result=busy why=<state|routine|facedet|working>
+	 * Only while idle with no routine running: face recognition, "what is this?" and RC video use the camera too.
+	 * The app asks again after each frame, so the frame rate is whatever the USB link manages (~1-2 fps).
+	 */
+	static constexpr int CamJpegQuality = 40;
+	std::atomic<bool> camWorking{ false };
+
+	void camFrame(){
+		const BBStateMachine* sm = getService<BBStateMachine>();
+		const State* state = sm != nullptr ? sm->getActiveState() : nullptr;
+		const char* busy = nullptr;
+		if(state == nullptr || strcmp(state->name(), "idle") != 0) busy = "state";
+		else if(sm->getActiveRoutine() != nullptr) busy = "routine";
+		else if(const FaceDet* fd = getService<FaceDet>(); fd != nullptr && fd->isStarted()) busy = "facedet";
+		else if(getDevice<Camera>() == nullptr) busy = "no_camera";
+		if(busy){
+			printf("[BBCAM] result=busy why=%s\n", busy);
+			return;
+		}
+		if(camWorking.exchange(true)){
+			printf("[BBCAM] result=busy why=working\n");
+			return;
+		}
+		// One worker, created the first time (JPEG encoding needs more stack than the console task has; a PSRAM stack
+		// is fine since nothing here touches flash). It waits for requests instead of being deleted after each frame.
+		if(camTask == nullptr){
+			const BaseType_t ok = xTaskCreatePinnedToCoreWithCaps([](void* self){
+				auto* bot = static_cast<Butterbot*>(self);
+				for(;;){
+					ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+					bot->sendCamFrame();
+					bot->camWorking = false;
+				}
+			}, "bbcam", 8192, this, 2, &camTask, tskNO_AFFINITY, MALLOC_CAP_SPIRAM);
+			if(ok != pdPASS){
+				camTask = nullptr;
+				camWorking = false;
+				printf("[BBCAM] result=error why=task\n");
+				return;
+			}
+		}
+		xTaskNotifyGive(camTask);
+	}
+
+	TaskHandle_t camTask = nullptr;
+
+	void sendCamFrame(){
+		Camera* cam = getDevice<Camera>();
+		camera_fb_t* fb = cam->getFrame();
+		uint8_t* jpg = nullptr;
+		size_t jpgLen = 0;
+		uint16_t w = 0, h = 0;
+		if(fb != nullptr && fb->buf != nullptr && fb->len > 0){
+			w = fb->width;
+			h = fb->height;
+			if(!frame2jpg(fb, CamJpegQuality, &jpg, &jpgLen)) jpg = nullptr;
+		}
+		cam->releaseFrame();
+		if(jpg == nullptr){
+			printf("[BBCAM] result=error why=capture\n");
+			return;
+		}
+		static constexpr char B64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+		const size_t outLen = (jpgLen + 2) / 3 * 4;
+		char* out = static_cast<char*>(heap_caps_malloc(outLen + 1, MALLOC_CAP_SPIRAM));
+		if(out == nullptr){
+			free(jpg);
+			printf("[BBCAM] result=error why=memory\n");
+			return;
+		}
+		size_t o = 0;
+		for(size_t i = 0; i < jpgLen; i += 3){
+			const uint32_t a = jpg[i], b = i + 1 < jpgLen ? jpg[i + 1] : 0, c = i + 2 < jpgLen ? jpg[i + 2] : 0;
+			const uint32_t v = (a << 16) | (b << 8) | c;
+			out[o++] = B64[(v >> 18) & 63];
+			out[o++] = B64[(v >> 12) & 63];
+			out[o++] = i + 1 < jpgLen ? B64[(v >> 6) & 63] : '=';
+			out[o++] = i + 2 < jpgLen ? B64[v & 63] : '=';
+		}
+		out[o] = 0;
+		printf("[BBCAM] w=%u h=%u n=%u jpg=%s\n", (unsigned) w, (unsigned) h, (unsigned) jpgLen, out);
+		free(out);
+		free(jpg);
 	}
 
 	// Fork: why the robot last started and how many times it has booted (Dimension Hopper's health readout).

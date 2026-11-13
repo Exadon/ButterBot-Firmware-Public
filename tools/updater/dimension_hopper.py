@@ -31,7 +31,7 @@ import tooltip
 from hopper_core import Kind
 
 APP_TITLE = "Dimension Hopper"
-VERSION = "1.2.2"
+VERSION = "1.2.3"
 
 # --- palette: portal-fluid green on lab-floor black --------------------------------------
 BG = "#070b08"
@@ -502,7 +502,7 @@ class App:
         self.cfg = core.load_config()
         self.q: queue.Queue = queue.Queue()
         self.busy = False
-        self.monitor_port: str | None = None  # port held open by the Diagnostics tab
+        self.monitor_ports: set[str] = set()  # ports held open by the Diagnostics tab (robot and controller)
 
         root.title(f"{APP_TITLE} {VERSION}")
         root.configure(bg=BG)
@@ -766,10 +766,10 @@ class App:
 
     def held_ports(self) -> set[str]:
         """Ports kept open by the Diagnostics or Console tab."""
-        return {p for p in (self.monitor_port, self.console_tab.port_open()) if p}
+        return {p for p in (*self.monitor_ports, self.console_tab.port_open()) if p}
 
     def port_in_use(self, port: str) -> bool:
-        if port and port == self.monitor_port:
+        if port and port in self.monitor_ports:
             self.info(f"{port} is open in the Diagnostics tab. Disconnect it there first.", "Port busy")
             return True
         if port and port == self.console_tab.port_open():

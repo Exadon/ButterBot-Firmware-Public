@@ -967,7 +967,7 @@ def read_status(port: str, timeout_s: float = 12.0, exclusive: bool = True) -> D
 # Diagnostics session (fork firmware streams "[BBDIAG] ..." while asked to with "diag on")
 # ---------------------------------------------------------------------------------------------
 
-DIAG_RE = re.compile(r"\[(BBDIAG|BBSTAT|BBDRIVE|BBFORGET|BBVOICE)\]((?:\s+\w+=\S+)+)")
+DIAG_RE = re.compile(r"\[(BBDIAG|BBSTAT|BBDRIVE|BBFORGET|BBVOICE|BBCAM)\]((?:\s+\w+=\S+)+)")
 
 
 class DiagSession:
@@ -1032,7 +1032,7 @@ class DiagSession:
                         self.on_line(m.group(1), fields, line)
                     else:
                         self.on_line("", {}, line)
-                if len(buf) > 4096:
+                if len(buf) > 65536:  # a camera frame line is ~8 KB; anything this long without a newline is noise
                     buf = buf[-1024:]
             try:
                 if self.diag:

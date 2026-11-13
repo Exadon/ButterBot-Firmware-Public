@@ -23,10 +23,15 @@ TIPS = {
     "Done": "Close this window.",
     # Diagnostics / Console
     "⟳": "Refresh the list of USB ports.",
-    "Connect": "Open (or close) this USB port to watch the board live. Only one tab or program can use a port at a time.",
+    "Connect": "Open this USB port to watch the board live. Only one tab or program can use a port at a time.",
+    "Disconnect": "Close this USB port again (the board keeps running).",
     "Send": "Send the typed command to the board over USB.",
     "Clear": "Clear the log on screen (the board isn't affected).",
     "Save log…": "Save everything shown in the log to a text file.",
+    "▶ Start camera": "Show what the robot's camera sees (about 1-2 frames a second over USB). Works while the robot "
+                      "is idle.",
+    "■ Stop camera": "Stop the camera view.",
+    "Save snapshot…": "Save the current camera frame as a picture.",
     # Personalize
     "Find robot": "Look through the USB ports for the robot.",
     "▶ Hear the current voice": "Have the robot say a sample line in the voice it's set to now.",

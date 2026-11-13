@@ -51,9 +51,13 @@ Settings that live on the robot. Right now: its **voice** - click one of the eig
 sample. Classic is the stock voice.
 
 ### Diagnostics
-Live readings from either board (sensors, motors, battery, link, motion events) and a **drive pad**: hold an arrow (or
-use the arrow keys / WASD) to drive the robot. It won't drive forward into an obstacle or off an edge, and stops when
-you let go.
+The robot and the controller side by side, each with its own port and Connect button (both can be connected at once;
+the ports are filled in from the Flash tab after a scan):
+
+- **ButterBot:** live sensors, motors, battery, link and motion events; a **drive pad** (hold an arrow, or use the arrow
+  keys / WASD - it won't drive forward into an obstacle or off an edge, and stops when you let go); and the **camera** -
+  what the robot sees, about 1-2 frames a second over USB while it's idle, with **Save snapshot…**.
+- **Controller:** the stick position (raw and processed), every button, the robot link and battery.
 
 ### Console
 The board's raw log with filters, a table of what the robot heard and matched, a box to send console commands, and

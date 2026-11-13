@@ -144,7 +144,7 @@ class ConsoleTab(tk.Frame):
         if self.app.busy:
             self.state_lbl.configure(text="Busy flashing - try again when it's done", fg=self.pal["WARN"])
             return
-        if port == self.app.monitor_port:
+        if port in self.app.monitor_ports:
             self.state_lbl.configure(text="That port is open in Diagnostics - disconnect it there first",
                                      fg=self.pal["WARN"])
             return
