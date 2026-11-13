@@ -36,10 +36,17 @@ jobs:
           fetch-depth: 0
 
       # Rebuilding an older tag: build that tag's code, but with this commit's CI script (older tags may lack it
-      # or have a broken one, like v1.1.1-exadon.2 whose CI image lost sdkconfig values)
+      # or have a broken one, like v1.1.1-exadon.2 whose CI image lost sdkconfig values). Written as an untracked
+      # file, not checked out: a changed index would make the app version "<tag>-dirty" and Dimension Hopper would
+      # never call the board up to date. The tag must not already contain the script (that would show as modified).
       - name: Use this commit's build script
         if: inputs.firmware_tag != ''
-        run: git checkout "$GITHUB_SHA" -- scripts/ci_build.sh
+        run: |
+          if git cat-file -e HEAD:scripts/ci_build.sh 2>/dev/null; then
+            echo "The tag has its own scripts/ci_build.sh; build it with that (push the tag again) instead"; exit 1
+          fi
+          mkdir -p scripts
+          git show "$GITHUB_SHA:scripts/ci_build.sh" > scripts/ci_build.sh
 
       - name: Build and merge image (ESP-IDF v5.5.3)
         uses: espressif/esp-idf-ci-action@v1
