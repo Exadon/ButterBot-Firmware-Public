@@ -130,7 +130,26 @@ class AITab(tk.Frame):
         self._refresh_thinking_state()
         self._set_gate(bool(self.cfg.get("ai_wifi_ok")))
         if self.cfg.get("ai_autostart") and self.cfg.get("ai_wifi_ok"):
-            self.after(800, self.start_brain)
+            self.after(800, self.start_brain)          # also checks the robot if it's plugged in
+        elif self.cfg.get("ai_wifi_ok"):
+            self.after(1500, self._quiet_robot_check)
+
+    def _quiet_robot_check(self):
+        """App just opened and the robot may be plugged in: read its AI setting and last problem, no complaints if not."""
+        port = self.port_var.get().split(" ", 1)[0]
+        if not port or not core.port_exists(port) or port in self.app.held_ports() or self.app.busy:
+            return
+
+        def work():
+            r = core.console_command(port, "wifi", "BBWIFI", 4)
+            if not r or core.port_problem(r, port) or "ai" not in r:
+                return  # not the robot on that port, switched off, or busy - stay quiet
+
+            def ui():
+                self._set_ai_label(r.get("ai") == "on")
+                self._report_last_problem(r)
+            self.app.ui(ui)
+        threading.Thread(target=work, daemon=True).start()
 
     # --- WiFi gate ------------------------------------------------------------------------------------
     def _set_gate(self, open_: bool):
@@ -715,6 +734,7 @@ class AITab(tk.Frame):
 
     def _save_auto(self):
         self.cfg["ai_autostart"] = bool(self.auto_var.get())
+        self.cfg["ai_autostart_decided"] = True
         core.save_config(self.cfg)
 
     def _set_ai_label(self, on: bool):
@@ -817,6 +837,14 @@ class AITab(tk.Frame):
                                                  f"{t.think_s:.1f}", f"{t.seconds:.1f}"),
                               tags=("bad",) if t.error else ())
             self.turns.see(self.turns.get_children()[-1])
+            if not t.error and t.heard and not self.cfg.get("ai_autostart_decided"):
+                # Setup works end to end: from now on start the brain when Dimension Hopper opens
+                self.cfg["ai_autostart"] = True
+                self.cfg["ai_autostart_decided"] = True
+                core.save_config(self.cfg)
+                self.auto_var.set(True)
+                self._say(self.run_status, self.run_lamp, "Setup complete - from now on AI conversations start by "
+                          "themselves when Dimension Hopper opens (untick the box above to change that).", "ok")
 
     def _show_help(self):
         p = self.pal
