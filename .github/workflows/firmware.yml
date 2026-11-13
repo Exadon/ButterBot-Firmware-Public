@@ -14,6 +14,14 @@ on:
         description: "Attach a freshly built DimensionHopper.exe to this existing release tag (e.g. v1.1.1-exadon.2); empty = just build it"
         required: false
         default: ""
+      firmware_tag:
+        description: "Rebuild the firmware at this existing tag (e.g. v1.1.1-exadon.2); the image is kept as an artifact"
+        required: false
+        default: ""
+      replace_release:
+        description: "Also replace that tag's release image with the rebuilt one"
+        type: boolean
+        default: false
 
 permissions:
   contents: write   # needed to create releases on tag pushes
@@ -23,6 +31,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.firmware_tag || github.ref }}
+          fetch-depth: 0
+
+      # Rebuilding an older tag: build that tag's code, but with this commit's CI script (older tags may lack it
+      # or have a broken one, like v1.1.1-exadon.2 whose CI image lost sdkconfig values)
+      - name: Use this commit's build script
+        if: inputs.firmware_tag != ''
+        run: git checkout "$GITHUB_SHA" -- scripts/ci_build.sh
 
       - name: Build and merge image (ESP-IDF v5.5.3)
         uses: espressif/esp-idf-ci-action@v1
@@ -37,7 +54,8 @@ jobs:
       - name: Name the image
         id: name
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then VER="${GITHUB_REF_NAME}"; else VER="$(git rev-parse --short HEAD)"; fi
+          if [[ -n "${{ inputs.firmware_tag }}" ]]; then VER="${{ inputs.firmware_tag }}"
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then VER="${GITHUB_REF_NAME}"; else VER="$(git rev-parse --short HEAD)"; fi
           OUT="ButterBot-${VER}.bin"
           sudo cp build/ButterBot-merged.bin "$OUT"
           sudo chown "$(id -u):$(id -g)" "$OUT"
@@ -59,6 +77,16 @@ jobs:
           body: |
             Flash with **Dimension Hopper** (`DimensionHopper.exe`, attached below): pick "Latest GitHub release" and this repository.
             Or manually: `esptool.py -c esp32s3 -b 921600 -p <PORT> write_flash 0 ${{ steps.name.outputs.file }}`
+
+      # Manual rebuild of an existing tag: replaces that release's image of the same name; the release text and its
+      # other files (DimensionHopper.exe) are left as they are
+      - name: Replace the release image
+        if: inputs.firmware_tag != '' && inputs.replace_release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.firmware_tag }}
+          files: ${{ steps.name.outputs.file }}
+          overwrite_files: true
 
   # Dimension Hopper: the Windows app, built on a Windows runner and attached to the same release
   hopper:
