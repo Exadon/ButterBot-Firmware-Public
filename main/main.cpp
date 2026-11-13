@@ -457,7 +457,11 @@ private:
 					else if(line == "srtest" || line.rfind("srtest ", 0) == 0) srTest(line.c_str() + 6);
 					else if(line.rfind("wifi bench ", 0) == 0) benchWifi(line.c_str() + 11);
 					else if(line.rfind("brain ", 0) == 0) setBrain(line.c_str() + 6);
-					else if(line == "ai on" || line == "ai off") runFlashJob([on = line == "ai on"]{ HomeWiFi::saveAiEnabled(on); printWifi(); });
+					else if(line == "ai on" || line == "ai off") runFlashJob([on = line == "ai on"]{
+						HomeWiFi::saveAiEnabled(on);
+						if(on) ListenState::clearAiPause(); // the brain was just started: try it on the next listen
+						printWifi();
+					});
 					line.clear();
 				}else if(line.size() < 300){
 					line += buf[i];

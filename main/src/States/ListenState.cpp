@@ -229,11 +229,12 @@ namespace {
 	 * wouldn't start again until a reboot - so a failed AI listen just ends, and the next press is the offline one.
 	 */
 	constexpr uint32_t AiCooldownMs = 2 * 60 * 1000;        // after a WiFi problem (worth retrying soon)
-	constexpr uint32_t BrainOffCooldownMs = 10 * 60 * 1000; // brain not there: usually the PC or the app is just off
-	uint32_t aiCooldownUntil = 0;
+	constexpr uint32_t BrainOffCooldownMs = 3 * 60 * 1000; // brain not there: usually the PC or the app is just off
+	std::atomic<uint32_t> aiCooldownUntil{ 0 }; // also cleared from the console task ("ai on")
 
 	bool aiCoolingDown(){
-		return aiCooldownUntil != 0 && (int32_t) (millis() - aiCooldownUntil) < 0;
+		const uint32_t until = aiCooldownUntil;
+		return until != 0 && (int32_t) (millis() - until) < 0;
 	}
 
 	void aiWorker(void* arg){
@@ -285,6 +286,12 @@ namespace {
 	}
 }
 
+void ListenState::clearAiPause(){
+    if(aiCooldownUntil.exchange(0) != 0){
+        printf("[BBAI] event=pause_cleared\n");
+    }
+}
+
 void ListenState::preallocate(){
 	phrases.reserve(activations.size() * 2);
 }
@@ -296,7 +303,7 @@ ListenState::ListenState(BBStateMachine* sm) : State(sm){
     {
         const HomeWiFi::Config cfg = HomeWiFi::load();
         if(cfg.aiEnabled && aiCoolingDown()){
-            printf("[BBAI] event=skipped why=cooldown s_left=%u\n", (unsigned) ((aiCooldownUntil - millis()) / 1000));
+            printf("[BBAI] event=skipped why=cooldown s_left=%u\n", (unsigned) ((aiCooldownUntil.load() - millis()) / 1000));
         }
         if(cfg.aiEnabled && !cfg.ssid.empty() && !aiWorkerRunning && !aiCoolingDown()){
             ai = std::make_shared<AiSession>();
@@ -429,8 +436,7 @@ void ListenState::fallBackToOffline(const Application* app, const char* why){
     ai->cancel = true;
     ai->handled = true;
     HomeWiFi::setLastProblem(why);
-    aiCooldownUntil = millis() + cooldownFor(why);
-    if(aiCooldownUntil == 0) aiCooldownUntil = 1;
+    aiCooldownUntil = (millis() + cooldownFor(why)) | 1; // never 0 (0 = no pause)
     // Let the worker switch WiFi off before anything else needs the memory
     const uint32_t start = millis();
     while(aiWorkerRunning && millis() - start < 5000){
@@ -518,8 +524,7 @@ void ListenState::tick(float){
             timedOut = true; // the dtor plays the usual "didn't hear you" line
         }else{
             HomeWiFi::setLastProblem(r.error.c_str());
-            aiCooldownUntil = millis() + cooldownFor(r.error);
-            if(aiCooldownUntil == 0) aiCooldownUntil = 1;
+            aiCooldownUntil = (millis() + cooldownFor(r.error)) | 1;
             if(Audio* audio = app->getService<Audio>()){
                 audio->play(ServiceLocator::SpeechAudioGenInstance.get(),
                             std::make_unique<SpeechAudioSource>(SpeechGen::InputType::Text, problemSentence(r.error)));

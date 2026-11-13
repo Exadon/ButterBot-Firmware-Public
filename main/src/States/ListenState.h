@@ -16,6 +16,9 @@ public:
 
     static void preallocate();
 
+    // Fork: end the pause on AI after a failed attempt (Dimension Hopper's Start sends "ai on" once the brain runs)
+    static void clearAiPause();
+
     void tick(float deltaTime) override;
     int64_t getDynamicTickInterval() const override;
 
