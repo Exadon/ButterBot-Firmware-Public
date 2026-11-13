@@ -67,24 +67,6 @@ static void playPhraseBlocking(const Application* app, Phrase phrase){
 
 static const char* TAG = "ListenState";
 
-// TEMPORARY instrumentation (perf/listen-timing): where does the time go between the button press
-// and the robot actually listening, and how much PSRAM does the recogniser take?
-// Logged at Warning level (the firmware filters everything below that) under one tag so it's easy to grep.
-#include <esp_heap_caps.h>
-#include <esp_timer.h>
-namespace ListenTiming {
-    static int64_t t0 = 0;
-    static void mark(const char* what){
-        const int64_t now = esp_timer_get_time();
-        if(t0 == 0) t0 = now;
-        ESP_LOGW("LISTEN_T", "%-22s +%5lld ms | PSRAM free %6u KB, largest %6u KB | internal free %4u KB",
-                 what, (now - t0) / 1000,
-                 (unsigned) (heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024),
-                 (unsigned) (heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM) / 1024),
-                 (unsigned) (heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024));
-    }
-}
-
 namespace {
     // Fork: the prompt ("Yes?", "I'm listening"...) is the cue to speak, so it must not end before the recogniser
     // is ready. Loading the model and building the command list takes ~3.0-3.1 s; with the old 2500 ms the prompt
@@ -172,8 +154,6 @@ namespace {
         const uint32_t budget = promptMs >= IntroWindowMs ? 0 : IntroWindowMs - promptMs;
 
         const SfxGroup& group = SfxGroups[rand() % std::size(SfxGroups)];
-
-        const uint32_t preloadStart = millis();
 
         const size_t maxAttempts = group.clips.size() * 4;
 
@@ -310,8 +290,6 @@ void ListenState::preallocate(){
 
 ListenState::ListenState(BBStateMachine* sm) : State(sm){
 	phrases.clear();
-    ListenTiming::t0 = 0;
-    ListenTiming::mark("enter");
 
     // Fork: AI brain path - start joining the WiFi right away, in parallel with the intro
     {
@@ -337,7 +315,6 @@ ListenState::ListenState(BBStateMachine* sm) : State(sm){
     const Application* app = ApplicationStatics::getApplication();
 
     buildAndPlayIntro(app);
-    ListenTiming::mark("intro queued");
 
     auto buttonInput = app->getService<ISRButtonInput>();
     if(buttonInput == nullptr){
@@ -376,12 +353,10 @@ ListenState::ListenState(BBStateMachine* sm) : State(sm){
         // recording once the brain is reachable, so the owner never waits for the WiFi. tick() handles failures.
         audioFrontend->loadModel(false);
         audioFrontend->setMode(AudioFrontend::Mode::Off);
-        ListenTiming::mark("afe loaded (ai)");
         if(Audio* audio = app->getService<Audio>()){
             audio->waitEnd(portMAX_DELAY);
         }
         audioFrontend->startRecording(ai->rec);
-        ListenTiming::mark("LISTENING (ai)");
         return;
     }
 
@@ -394,7 +369,6 @@ void ListenState::startOffline(const Application* app){
         return;
     }
     audioFrontend->loadModel();
-    ListenTiming::mark("model loaded");
 
     audioFrontend->setMode(AudioFrontend::Mode::Off);
 
@@ -412,16 +386,13 @@ void ListenState::startOffline(const Application* app){
         }
 
         audioFrontend->setSpeechPhrases(phrases);
-        ListenTiming::mark("phrases set");
     }
 
     if(Audio* audio = app->getService<Audio>()){
         audio->waitEnd(portMAX_DELAY);
-        ListenTiming::mark("intro finished");
 
         sm->bindState(audioFrontend->onPhrase, this, &ListenState::onPhrase);
         audioFrontend->setMode(AudioFrontend::Mode::Speech);
-        ListenTiming::mark("LISTENING");
     }
 }
 
@@ -479,7 +450,6 @@ ListenState::~ListenState(){
     if(AudioFrontend* audioFrontend = app->getService<AudioFrontend>()){
         audioFrontend->setMode(AudioFrontend::Mode::Off);
 		audioFrontend->unloadModel();
-        ListenTiming::mark("model unloaded");
     }
 
     if(timedOut){
