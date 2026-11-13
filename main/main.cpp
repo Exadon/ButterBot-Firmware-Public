@@ -680,8 +680,8 @@ private:
 			ip4_addr_t a{ .addr = c.brainIp };
 			snprintf(brain, sizeof(brain), "%s", ip4addr_ntoa(&a));
 		}
-		printf("[BBWIFI] configured=%d ssid_hex=%s ai=%s brain=%s\n", c.ssid.empty() ? 0 : 1,
-		       ssidHex.empty() ? "-" : ssidHex.c_str(), c.aiEnabled ? "on" : "off", brain);
+		printf("[BBWIFI] configured=%d ssid_hex=%s ai=%s brain=%s last=%s\n", c.ssid.empty() ? 0 : 1,
+		       ssidHex.empty() ? "-" : ssidHex.c_str(), c.aiEnabled ? "on" : "off", brain, HomeWiFi::lastProblem());
 	}
 
 	static void setWifi(const char* args){

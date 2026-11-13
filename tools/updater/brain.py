@@ -102,6 +102,36 @@ def save_api_key(key: str) -> None:
             pass
 
 
+# WiFi passwords the user chose to remember: Windows Credential Manager, one entry per network name
+WIFI_KEYRING_SERVICE = "DimensionHopper WiFi"
+
+
+def load_wifi_password(ssid: str) -> str:
+    if not ssid:
+        return ""
+    try:
+        import keyring
+        return keyring.get_password(WIFI_KEYRING_SERVICE, ssid) or ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def save_wifi_password(ssid: str, password: str) -> None:
+    import keyring
+    if password:
+        keyring.set_password(WIFI_KEYRING_SERVICE, ssid, password)
+    else:
+        forget_wifi_password(ssid)
+
+
+def forget_wifi_password(ssid: str) -> None:
+    try:
+        import keyring
+        keyring.delete_password(WIFI_KEYRING_SERVICE, ssid)
+    except Exception:  # noqa: BLE001 - nothing saved
+        pass
+
+
 # ---------------------------------------------------------------------------------------------
 # What the robot can do: its existing voice commands (guide_data.json, generated from Scenarios.h)
 # ---------------------------------------------------------------------------------------------

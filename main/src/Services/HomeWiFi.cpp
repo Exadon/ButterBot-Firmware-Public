@@ -71,6 +71,19 @@ void HomeWiFi::clear(){
 	nvs_close(h);
 }
 
+namespace {
+	char lastProblemText[24] = "none";
+}
+
+void HomeWiFi::setLastProblem(const char* problem){
+	strncpy(lastProblemText, problem && *problem ? problem : "none", sizeof(lastProblemText) - 1);
+	lastProblemText[sizeof(lastProblemText) - 1] = 0;
+}
+
+const char* HomeWiFi::lastProblem(){
+	return lastProblemText;
+}
+
 const char* HomeWiFi::resultName(Result r){
 	switch(r){
 		case Result::Ok: return "ok";

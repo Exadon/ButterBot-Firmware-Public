@@ -37,6 +37,15 @@ public:
 	enum class Result : uint8_t { Ok, NotConfigured, NotFound, WrongPassword, Timeout, Failed };
 	static const char* resultName(Result r);
 
+	/**
+	 * Fork: why the last AI listen couldn't use the brain ("none" after a success). Kept in RAM since boot, reported
+	 * in the [BBWIFI] line so Dimension Hopper can tell the owner what to fix once the robot is plugged in.
+	 * Values: none, not_configured, network_not_found, wrong_password, timeout, failed, brain_not_found, brain_unreachable,
+	 * send_failed, no_reply, ...
+	 */
+	static void setLastProblem(const char* problem);
+	static const char* lastProblem();
+
 	/** Starts WiFi and blocks until it has an IP address (or fails/times out). Call stop() afterwards either way. */
 	Result start(const Config& cfg, uint32_t timeoutMs);
 	void stop();

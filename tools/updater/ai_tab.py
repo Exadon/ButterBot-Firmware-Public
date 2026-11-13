@@ -41,9 +41,11 @@ FIRST-TIME SETUP
 2. Type your WiFi name and password and hit "Send to robot", then "Test robot WiFi".
 3. Pick a Whisper model and hit "Load" (it downloads once).
 4. Choose Claude (paste your key, Save) or Ollama (Check), then "Try it" with a typed message.
-5. Hit "Start brain". Windows may ask whether Python/Dimension Hopper may use the network: allow it on PRIVATE \
-networks, or the robot can't find this PC.
-6. Hit "AI mode ON" to tell the robot to use the brain. Unplug it, press listen and talk.
+5. With the robot still plugged in, press "Start AI conversations": it starts the brain and sets the robot up to use \
+it (its AI setting and this PC's address). Then unplug it, press listen and talk. From then on Start works without the \
+robot plugged in - unless this PC's address changes (the status line says so). To stop that ever happening, give this \
+PC a reserved / fixed address in your router's app. The first time, Windows may ask whether Dimension Hopper may \
+use the network: allow it on PRIVATE networks, or the robot can't reach this PC.
 
 PRIVACY
 Your voice is turned into text on this PC. Only the text goes to the AI you picked (or stays on this PC with Ollama). \
@@ -211,16 +213,42 @@ class AITab(tk.Frame):
                        selectcolor=self.pal["PANEL_HI"], activebackground=self.pal["PANEL"], highlightthickness=0,
                        command=lambda: self.pass_entry.configure(show="" if self.show_pass.get() else "•")).grid(
             row=1, column=2, sticky="w")
+        # Remember per network, in Windows Credential Manager (never in Dimension Hopper's settings file)
+        self.remember_pass = tk.BooleanVar(value=bool(self.cfg.get("ai_remember_wifi", True)))
+        tk.Checkbutton(body, text="remember on this PC", variable=self.remember_pass, bg=self.pal["PANEL"],
+                       fg=self.pal["DIM"], selectcolor=self.pal["PANEL_HI"], activebackground=self.pal["PANEL"],
+                       highlightthickness=0, command=self._remember_changed).grid(row=1, column=3, sticky="w", padx=(6, 0))
+        self.ssid_box.bind("<<ComboboxSelected>>", lambda e: self._fill_saved_password())
+        self.ssid_box.bind("<FocusOut>", lambda e: self._fill_saved_password())
         btns = tk.Frame(body, bg=self.pal["PANEL"])
         btns.grid(row=2, column=0, columnspan=3, sticky="w", pady=(6, 0))
         self.app.button(btns, "Send to robot", self.send_wifi, small=True).pack(side="left")
         self.app.button(btns, "Test robot WiFi", self.test_wifi, small=True).pack(side="left", padx=6)
         self.app.button(btns, "Check robot", self.check_robot, small=True).pack(side="left")
-        self.wifi_status.configure(text="2.4 GHz networks only. The password is stored on the robot, not on this PC.")
-        # The address the robot is given for the brain (Test robot WiFi and AI mode ON send it over USB)
+        self.wifi_status.configure(text="2.4 GHz networks only. The password goes to the robot over USB; with 'remember' "
+                                        "ticked it's also kept in Windows Credential Manager on this PC.")
+        # The address the robot is given for the brain (Test robot WiFi and Start send it over USB)
         self.pc_ip_lbl = tk.Label(body, text="", bg=self.pal["PANEL"], fg=self.pal["DIM"], font=("Segoe UI", 8))
         self.pc_ip_lbl.grid(row=3, column=0, columnspan=4, sticky="w", pady=(6, 0))
         self._show_pc_ip()
+        self._fill_saved_password()
+
+    def _fill_saved_password(self):
+        """Puts the remembered password for the chosen network in the box (only if the box is empty)."""
+        if self.pass_var.get():
+            return
+        saved = brain.load_wifi_password(self.ssid_var.get().strip())
+        if saved:
+            self.pass_var.set(saved)
+
+    def _remember_changed(self):
+        self.cfg["ai_remember_wifi"] = bool(self.remember_pass.get())
+        core.save_config(self.cfg)
+        if not self.remember_pass.get():
+            ssid = self.ssid_var.get().strip()
+            brain.forget_wifi_password(ssid)
+            self._say(self.wifi_status, self.wifi_lamp,
+                      f"Won't remember WiFi passwords" + (f" - the saved one for {ssid} is deleted." if ssid else "."), "")
 
     def _show_pc_ip(self, robot_ip: str | None = None):
         pc = brain.local_ip()
@@ -262,10 +290,15 @@ class AITab(tk.Frame):
 
     def _push_brain_address(self, port: str) -> None:
         """Tells the robot this PC's address, so it finds the brain even across sub-networks (worker thread)."""
+        ip = brain.local_ip()
         try:
-            core.console_command(port, f"brain {brain.local_ip()} {brain.TALK_PORT}", "BBWIFI", 4)
+            r = core.console_command(port, f"brain {ip} {brain.TALK_PORT}", "BBWIFI", 4)
         except Exception:  # noqa: BLE001 - the broadcast search still works on simple networks
-            pass
+            r = None
+        if r and r.get("brain") == ip:
+            self.cfg["ai_robot_brain_ip"] = ip
+            core.save_config(self.cfg)
+            self.app.ui(self._show_state)
 
     def send_wifi(self):
         ssid, pw = self.ssid_var.get().strip(), self.pass_var.get()
@@ -284,7 +317,13 @@ class AITab(tk.Frame):
                 self._say(self.wifi_status, self.wifi_lamp, "No answer - the robot needs this release's firmware "
                           "(flash it from the Flash tab) and must be switched on.", "bad")
             elif r.get("result") == "saved" or r.get("configured") == "1":
-                self.pass_var.set("")
+                if self.remember_pass.get():
+                    try:
+                        brain.save_wifi_password(ssid, pw)
+                    except Exception:  # noqa: BLE001 - remembering is a convenience; the robot has it either way
+                        pass
+                else:
+                    self.pass_var.set("")
                 self._say(self.wifi_status, self.wifi_lamp, f"Saved on the robot. Now hit \"Test robot WiFi\".", "ok")
             else:
                 self._say(self.wifi_status, self.wifi_lamp, f"The robot refused it ({r.get('why', '?')}).", "bad")
@@ -371,6 +410,7 @@ class AITab(tk.Frame):
             text = (f"Robot WiFi: {ssid or 'not set'} · AI mode {r.get('ai', '?').upper()}"
                     + (f" · last brain {r['brain']}" if r.get("brain", "none") != "none" else ""))
             self._say(self.wifi_status, self.wifi_lamp, text, "ok" if ssid else "warn")
+            self._report_last_problem(r)
             if not ssid:
                 self._set_gate(False)
             self._set_ai_label(r.get("ai") == "on")
@@ -613,37 +653,91 @@ class AITab(tk.Frame):
     def _build_run(self, parent):
         p = self.pal
         body, self.run_lamp, self.run_status = self._card(parent, "4", "TURN IT ON")
-        self.brain_btn = self.app.button(body, "▶ Start brain", self.toggle_brain)
+        self.brain_btn = self.app.button(body, "▶ Start AI conversations", self.toggle_brain)
         self.brain_btn.grid(row=0, column=0, sticky="w")
         self.auto_var = tk.BooleanVar(value=bool(self.cfg.get("ai_autostart", False)))
-        tk.Checkbutton(body, text="Start the brain when Dimension Hopper opens", variable=self.auto_var,
+        tk.Checkbutton(body, text="Start automatically when Dimension Hopper opens", variable=self.auto_var,
                        command=self._save_auto, bg=p["PANEL"], fg=p["TEXT"], selectcolor=p["PANEL_HI"],
                        activebackground=p["PANEL"], highlightthickness=0, font=("Segoe UI", 9)).grid(
             row=0, column=1, sticky="w", padx=10)
-        robot = tk.Frame(body, bg=p["PANEL"])
-        robot.grid(row=1, column=0, columnspan=2, sticky="w", pady=(8, 0))
-        self.app.button(robot, "AI mode ON", lambda: self.set_ai(True), small=True).pack(side="left")
-        self.app.button(robot, "AI mode OFF", lambda: self.set_ai(False), small=True).pack(side="left", padx=6)
-        self.ai_lbl = tk.Label(robot, text="(on the robot, over USB)", bg=p["PANEL"], fg=p["DIM"], font=("Segoe UI", 8))
-        self.ai_lbl.pack(side="left", padx=6)
-        self.run_status.configure(text="The brain only runs while this app is open. When it's off, the robot says its "
-                                       "brain is offline and uses its built-in commands.")
+        # The robot's own setting (saved on it). Rarely changed: on = try the brain first, off = built-in commands only
+        self.robot_ai_var = tk.BooleanVar(value=bool(self.cfg.get("ai_robot_ai", True)))
+        tk.Checkbutton(body, text="Robot uses AI when the brain is available (a setting on the robot, sent over USB)",
+                       variable=self.robot_ai_var, command=self._robot_ai_changed, bg=p["PANEL"], fg=p["DIM"],
+                       selectcolor=p["PANEL_HI"], activebackground=p["PANEL"], highlightthickness=0,
+                       font=("Segoe UI", 8)).grid(row=1, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        self.state_lbl = tk.Label(body, text="", bg=p["PANEL"], fg=p["DIM"], font=("Segoe UI Semibold", 9), anchor="w")
+        self.state_lbl.grid(row=2, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        self.robot_ai: tuple[bool, str] | None = None   # (on, "HH:MM") as last reported by the robot
+        self._show_state()
+        self.run_status.configure(text="Starts the brain on this PC and, if the robot is plugged in, makes sure it's "
+                                       "set up to use it. The brain only runs while this app is open; when it's off, "
+                                       "the robot says so and uses its built-in commands.")
+
+    LAST_PROBLEM = {
+        "network_not_found": "it couldn't find your WiFi network - check the name in step 1 (2.4 GHz only)",
+        "not_configured": "it has no WiFi saved - fill in step 1",
+        "wrong_password": "the WiFi password was rejected - re-send it in step 1",
+        "timeout": "joining the WiFi timed out - try Test robot WiFi in step 1",
+        "failed": "WiFi didn't start - try Test robot WiFi in step 1",
+        "brain_not_found": "it couldn't find the brain - press Start with the robot plugged in",
+        "brain_unreachable": "it couldn't reach the brain - press Start with the robot plugged in",
+        "send_failed": "the upload to the brain broke off - usually a one-off",
+        "no_reply": "the brain didn't reply - check step 3 works with Try it",
+    }
+
+    def _report_last_problem(self, r: dict | None):
+        """When the robot is plugged in, say what went wrong on its last AI listen (if anything)."""
+        last = (r or {}).get("last", "none")
+        if last and last != "none":
+            why = self.LAST_PROBLEM.get(last, last.replace("_", " "))
+            self._say(self.run_status, self.run_lamp, f"Last time the robot tried the brain, {why}.", "warn")
+
+    def _show_state(self):
+        running = bool(self.server and self.server.running)
+        ready = running and self.server.ready.is_set()
+        brain_txt = "ready" if ready else ("warming up…" if running else "stopped")
+        if self.robot_ai is None:
+            robot_txt = "plug it in to check its AI setting"
+        else:
+            robot_txt = f"AI {'on' if self.robot_ai[0] else 'off'} (checked {self.robot_ai[1]})"
+        told = self.cfg.get("ai_robot_brain_ip", "")
+        now = brain.local_ip()
+        if told and told != now:
+            self.state_lbl.configure(text=f"This PC's address changed since the robot was set up (was {told}, now {now}). "
+                                          "Plug the robot in once and press Start again.", fg=self.pal["WARN"])
+            return
+        good = ready and self.robot_ai is not None and self.robot_ai[0]
+        self.state_lbl.configure(text=f"Brain: {brain_txt}   ·   Robot: {robot_txt}"
+                                      + ("   →   talk to it!" if good else ""),
+                                 fg=self.pal["GREEN"] if good else self.pal["DIM"])
 
     def _save_auto(self):
         self.cfg["ai_autostart"] = bool(self.auto_var.get())
         core.save_config(self.cfg)
 
     def _set_ai_label(self, on: bool):
-        self.ai_lbl.configure(text=f"AI mode is {'ON' if on else 'OFF'} on the robot",
-                              fg=self.pal["GREEN"] if on else self.pal["DIM"])
+        self.robot_ai = (on, time.strftime("%H:%M"))
+        self._show_state()
 
-    def set_ai(self, on: bool):
+    def _robot_ai_changed(self):
+        self.cfg["ai_robot_ai"] = bool(self.robot_ai_var.get())
+        core.save_config(self.cfg)
+        self.set_ai(self.robot_ai_var.get())
+
+    def set_ai(self, on: bool, quiet: bool = False):
         port = self.port_var.get().split(" ", 1)[0]
-        if not port:
-            self._say(self.run_status, self.run_lamp, "Pick the robot's USB port at the top first.", "warn")
-            return
-        if self.app.port_in_use(port) or self.app.busy:
-            return
+        if quiet:
+            # From Start: only if the robot is plugged in and the port is free; otherwise it keeps its last setting
+            if not port or not core.port_exists(port) or port in self.app.held_ports() or self.app.busy:
+                return
+        else:
+            if not port:
+                self._say(self.run_status, self.run_lamp, "Plug the robot in and pick its USB port at the top first.",
+                          "warn")
+                return
+            if self.app.port_in_use(port) or self.app.busy:
+                return
 
         def work():
             if on:
@@ -651,8 +745,11 @@ class AITab(tk.Frame):
             r = core.console_command(port, "ai on" if on else "ai off", "BBWIFI", 4)
             problem = core.port_problem(r, port)
             if problem:
-                self.app.ui(lambda: self._say(self.run_status, self.run_lamp, problem, "bad"))
+                if not quiet:
+                    self.app.ui(lambda: self._say(self.run_status, self.run_lamp, problem, "bad"))
                 return
+            if r is None and quiet:
+                return  # not the robot on that port, or switched off - nothing to report from Start
 
             def ui():
                 if r is None:
@@ -660,6 +757,7 @@ class AITab(tk.Frame):
                               "bad")
                 else:
                     self._set_ai_label(r.get("ai") == "on")
+                    self._report_last_problem(r)
                     if r.get("configured") != "1" and on:
                         self._say(self.run_status, self.run_lamp, "AI mode is on, but the robot has no WiFi saved yet "
                                   "(step 1).", "warn")
@@ -669,7 +767,8 @@ class AITab(tk.Frame):
     def toggle_brain(self):
         if self.server and self.server.running:
             self.server.stop()
-            self.brain_btn.configure(text="▶ Start brain")
+            self.brain_btn.configure(text="▶ Start AI conversations")
+            self._show_state()
             return
         self.start_brain()
 
@@ -686,7 +785,11 @@ class AITab(tk.Frame):
             self._say(self.run_status, self.run_lamp, f"Couldn't start: {e} (is another Dimension Hopper running?)", "bad")
             self.server = None
             return
-        self.brain_btn.configure(text="■ Stop brain")
+        self.brain_btn.configure(text="■ Stop AI conversations")
+        self._show_state()
+        # If the robot is plugged in: make sure it's set up to use the brain (and has this PC's current address)
+        if self.robot_ai_var.get():
+            self.set_ai(True, quiet=True)
 
     def _event(self, kind: str, value):
         if kind == "status":
@@ -694,9 +797,11 @@ class AITab(tk.Frame):
             # READY only once warm-up has finished; until then the step shows WORKING…
             state = ("ok" if self.server.ready.is_set() else "busy") if running else ""
             self._say(self.run_status, self.run_lamp, str(value), state)
+            self._show_state()
             if "Whisper" in str(value):
                 self._say(self.hear_status, self.hear_lamp, str(value), "ok" if "ready" in str(value) else "busy")
         elif kind == "warming":
+            self._show_state()
             if value:
                 self._say(self.run_status, self.run_lamp, "Warming up the brain - wait for READY before talking…",
                           "busy")
