@@ -1,5 +1,7 @@
 #include "BrainLink.h"
+#include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <lwip/sockets.h>
 #include <lwip/inet.h>
@@ -8,6 +10,7 @@
 #include <esp_timer.h>
 #include <vector>
 #include "Util/PSRAMAllocator.h"
+#include "BLE/ConMan.h"
 #include "Log/Log.h"
 
 DEFINE_LOG(BrainLink)
@@ -58,6 +61,59 @@ namespace {
 		}
 		if(progress) printf("[BBAI] event=uploaded bytes=%u ms=%lld\n", (unsigned) total, (esp_timer_get_time() - t0) / 1000);
 		return true;
+	}
+
+	// Radio modes while WiFi uploads: 0 balance, 1 prefer WiFi, 2 prefer WiFi + pause BLE advertising
+	void radioFor(int mode, bool on){
+		if(mode >= 1) esp_coex_preference_set(on ? ESP_COEX_PREFER_WIFI : ESP_COEX_PREFER_BALANCE);
+		if(mode >= 2) ConMan.setQuiet(on);
+	}
+
+	/*
+	 * Shrinking the upload (measured on the PC with Whisper first: same words, a quarter of the bytes):
+	 *  - trim: keep only the speech plus 200 ms either side (the recording ends with ~0.7 s of silence by design)
+	 *  - 16 -> 8 kHz: a small half-band low-pass, then every other sample. The PC interpolates back to 16 kHz.
+	 * Set SendRate to 16000 to send full-rate audio again.
+	 */
+	constexpr uint32_t SendRate = 8000;
+	constexpr size_t TrimFrame = 320;   // 20 ms at 16 kHz
+	constexpr size_t TrimMargin = 10;   // frames kept around the speech
+
+	void trimSilence(const int16_t* pcm, size_t samples, size_t& from, size_t& to){
+		from = 0;
+		to = samples;
+		const size_t n = samples / TrimFrame;
+		if(n == 0) return;
+		std::vector<uint32_t, PSRAMAllocator<uint32_t>> energy(n);
+		for(size_t f = 0; f < n; ++f){
+			uint32_t sum = 0;
+			for(size_t i = 0; i < TrimFrame; ++i) sum += (uint32_t) std::abs((int32_t) pcm[f * TrimFrame + i]);
+			energy[f] = sum / TrimFrame;
+		}
+		std::vector<uint32_t, PSRAMAllocator<uint32_t>> sorted(energy);
+		std::nth_element(sorted.begin(), sorted.begin() + n / 10, sorted.end());
+		const uint32_t threshold = std::max<uint32_t>(sorted[n / 10] * 4, 200); // 4x the quietest tenth = speech
+		size_t first = n, last = 0;
+		for(size_t f = 0; f < n; ++f){
+			if(energy[f] > threshold){
+				if(first == n) first = f;
+				last = f;
+			}
+		}
+		if(first == n) return; // nothing clearly louder than the background: send it all
+		from = (first > TrimMargin ? first - TrimMargin : 0) * TrimFrame;
+		to = std::min(n, last + 1 + TrimMargin) * TrimFrame;
+	}
+
+	int16_t halfbandAt(const int16_t* pcm, size_t samples, size_t i){
+		static constexpr int Taps[] = { -1, 0, 9, 16, 9, 0, -1 }; // /32
+		int32_t acc = 0;
+		for(int k = 0; k < 7; ++k){
+			const int64_t idx = (int64_t) i + k - 3;
+			if(idx >= 0 && idx < (int64_t) samples) acc += Taps[k] * (int32_t) pcm[idx];
+		}
+		acc /= 32;
+		return (int16_t) std::clamp<int32_t>(acc, -32768, 32767);
 	}
 
 	// G.711 mu-law: 8 bits per sample, half the bytes of 16-bit PCM, plenty for speech recognition
@@ -119,19 +175,19 @@ bool reachable(uint32_t ip, uint16_t port, uint32_t timeoutMs){
 	return true;
 }
 
-int64_t uploadTest(uint32_t ip, uint16_t port, uint32_t bytes, bool preferWifi){
+int64_t uploadTest(uint32_t ip, uint16_t port, uint32_t bytes, int radioMode){
 	const int s = connectTo(ip, port, 30000);
 	if(s < 0) return -1;
 	std::vector<uint8_t, PSRAMAllocator<uint8_t>> filler(bytes, 0x55);
 	char head[64];
 	const int hn = snprintf(head, sizeof(head), "BBSINK bytes=%u\n", (unsigned) bytes);
-	if(preferWifi) esp_coex_preference_set(ESP_COEX_PREFER_WIFI);
+	radioFor(radioMode, true);
 	const int64_t t0 = esp_timer_get_time();
 	const bool ok = sendAll(s, head, (size_t) hn) && sendAll(s, filler.data(), filler.size());
 	char ack[8];
 	const bool acked = ok && recv(s, ack, sizeof(ack), 0) > 0; // the receiver answers once it has everything
 	const int64_t ms = (esp_timer_get_time() - t0) / 1000;
-	if(preferWifi) esp_coex_preference_set(ESP_COEX_PREFER_BALANCE);
+	radioFor(radioMode, false);
 	close(s);
 	return acked ? ms : -1;
 }
@@ -144,16 +200,26 @@ Reply converse(uint32_t ip, uint16_t port, const int16_t* pcm, size_t samples, c
 		return r;
 	}
 
-	std::vector<uint8_t, PSRAMAllocator<uint8_t>> ulaw(samples);
-	for(size_t i = 0; i < samples; ++i) ulaw[i] = toUlaw(pcm[i]);
+	size_t from = 0, to = samples;
+	trimSilence(pcm, samples, from, to);
+	const int16_t* speech = pcm + from;
+	const size_t speechSamples = to - from;
+	const size_t step = SendRate == 8000 ? 2 : 1;
+	std::vector<uint8_t, PSRAMAllocator<uint8_t>> ulaw(speechSamples / step);
+	for(size_t j = 0; j < ulaw.size(); ++j){
+		ulaw[j] = toUlaw(step == 2 ? halfbandAt(speech, speechSamples, j * 2) : speech[j]);
+	}
+	printf("[BBAI] event=shrunk ms=%u kept_ms=%u bytes=%u\n", (unsigned) (samples / 16), (unsigned) (speechSamples / 16),
+	       (unsigned) ulaw.size());
 
 	char head[160];
-	const int hn = snprintf(head, sizeof(head), "BBTALK 1 rate=16000 fmt=ulaw bytes=%u voice=%s fw=%s\n",
-	                        (unsigned) ulaw.size(), voice, esp_app_get_description()->version);
+	const int hn = snprintf(head, sizeof(head), "BBTALK 1 rate=%u fmt=ulaw bytes=%u voice=%s fw=%s\n",
+	                        (unsigned) SendRate, (unsigned) ulaw.size(), voice, esp_app_get_description()->version);
 	// WiFi and Bluetooth share one radio; for the upload WiFi gets priority (the controller link just slows briefly)
-	esp_coex_preference_set(ESP_COEX_PREFER_WIFI);
+	// Measured: WiFi priority is 3-4x faster than balanced; pausing BLE advertising on top didn't help
+	radioFor(1, true);
 	const bool sent = sendAll(s, head, (size_t) hn) && sendAll(s, ulaw.data(), ulaw.size(), true);
-	esp_coex_preference_set(ESP_COEX_PREFER_BALANCE);
+	radioFor(1, false);
 	if(!sent){
 		close(s);
 		r.error = "send_failed";

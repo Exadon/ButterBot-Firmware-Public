@@ -287,6 +287,16 @@ def ulaw_to_pcm16(data: bytes) -> bytes:
     return pcm.astype(np.int16).tobytes()
 
 
+def upsample_8k_to_16k(pcm16: bytes) -> bytes:
+    """The robot can send 8 kHz to halve the upload; Whisper wants 16 kHz. Linear interpolation is plenty for speech."""
+    import numpy as np
+    x = np.frombuffer(pcm16, dtype=np.int16).astype(np.float32)
+    if len(x) < 2:
+        return pcm16
+    t = np.arange(len(x) * 2, dtype=np.float32) / 2.0
+    return np.interp(t, np.arange(len(x), dtype=np.float32), x).astype(np.int16).tobytes()
+
+
 class Ears:
     def __init__(self):
         self.model = None
@@ -444,6 +454,8 @@ class BrainServer:
             self.on_event("robot", addr[0])
             if fields.get("fmt") == "ulaw":
                 audio = bytearray(ulaw_to_pcm16(bytes(audio)))
+            if fields.get("rate") == "8000":
+                audio = bytearray(upsample_8k_to_16k(bytes(audio)))
 
             def send(line: str):
                 conn.sendall((line.replace("\n", " ") + "\n").encode("utf-8", "replace"))

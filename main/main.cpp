@@ -818,7 +818,7 @@ private:
 		uint32_t ip;
 		uint16_t port;
 		uint32_t kb;
-		bool preferWifi;
+		int radioMode; // 0 balance, 1 wifi, 2 quiet
 		Butterbot* bot;
 	};
 
@@ -841,7 +841,7 @@ private:
 			printf("[BBWIFI] result=busy state=testing\n");
 			return;
 		}
-		auto* ba = new BenchArgs{ a.addr, static_cast<uint16_t>(port), kb, strcmp(coex, "wifi") == 0, this };
+		auto* ba = new BenchArgs{ a.addr, static_cast<uint16_t>(port), kb, strcmp(coex, "quiet") == 0 ? 2 : (strcmp(coex, "wifi") == 0 ? 1 : 0), this };
 		xTaskCreatePinnedToCore([](void* arg){
 			auto* ba = static_cast<BenchArgs*>(arg);
 			{
@@ -850,16 +850,16 @@ private:
 				if(r != HomeWiFi::Result::Ok){
 					printf("[BBWIFI] result=failed why=%s\n", HomeWiFi::resultName(r));
 				}else{
-					const int64_t ms = BrainLink::uploadTest(ba->ip, ba->port, ba->kb * 1024, ba->preferWifi);
+					const int64_t ms = BrainLink::uploadTest(ba->ip, ba->port, ba->kb * 1024, ba->radioMode);
 					const unsigned ram = (unsigned) (heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024);
 					const unsigned ramMin = (unsigned) (heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL) / 1024);
 					if(ms < 0){
 						printf("[BBWIFI] result=bench_failed kb=%lu coex=%s rssi=%d ram=%u\n", (unsigned long) ba->kb,
-						       ba->preferWifi ? "wifi" : "balance", wifi.rssi(), ram);
+						       (ba->radioMode == 2 ? "quiet" : ba->radioMode == 1 ? "wifi" : "balance"), wifi.rssi(), ram);
 					}else{
 						printf("[BBWIFI] result=bench kb=%lu ms=%lld kbps=%lld coex=%s rssi=%d ram=%u ram_min=%u\n",
 						       (unsigned long) ba->kb, ms, ms > 0 ? (int64_t) ba->kb * 1000 / ms : 0,
-						       ba->preferWifi ? "wifi" : "balance", wifi.rssi(), ram, ramMin);
+						       (ba->radioMode == 2 ? "quiet" : ba->radioMode == 1 ? "wifi" : "balance"), wifi.rssi(), ram, ramMin);
 					}
 				}
 				wifi.stop();

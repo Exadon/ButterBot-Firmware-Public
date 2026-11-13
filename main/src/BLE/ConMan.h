@@ -5,6 +5,7 @@
 #include "ConConf.h"
 #include <esp_gap_ble_api.h>
 #include <array>
+#include <atomic>
 #include <cstring>
 
 class ConManager {
@@ -25,6 +26,12 @@ public:
 
 	void goLowPow();
 	void goHiPow();
+
+	/**
+	 * Fork: "radio quiet" - pause advertising while WiFi needs the shared radio (AI uploads), resume afterwards.
+	 * Callable from any task. Connections are untouched; only the 20 ms "connect to me" broadcasts stop.
+	 */
+	void setQuiet(bool quiet);
 
 private:
 	friend BLE::GAP;
@@ -54,6 +61,7 @@ private:
 
 	bool advertising = false;
 	bool wantAdv = false;
+	std::atomic<bool> quiet{ false };
 
 	bool lowPow = false;
 

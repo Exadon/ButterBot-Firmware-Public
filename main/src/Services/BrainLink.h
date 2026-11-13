@@ -30,7 +30,7 @@ bool discover(uint32_t& ip, uint16_t& port, uint32_t timeoutMs);
 bool reachable(uint32_t ip, uint16_t port, uint32_t timeoutMs);
 
 /** Diagnostic: uploads `bytes` of filler to a test receiver (BBSINK), returns milliseconds or -1. */
-int64_t uploadTest(uint32_t ip, uint16_t port, uint32_t bytes, bool preferWifi);
+int64_t uploadTest(uint32_t ip, uint16_t port, uint32_t bytes, int radioMode); // 0 balance, 1 wifi, 2 quiet
 
 struct Reply {
 	bool ok = false;

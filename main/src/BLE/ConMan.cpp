@@ -207,9 +207,22 @@ void ConManager::goHiPow(){
 	}
 }
 
+void ConManager::setQuiet(bool q){
+	quiet = q;
+	if(q){
+		// Stop whatever is on air; wantAdv stays, so advertising comes back when the quiet ends
+		esp_ble_gap_stop_advertising();
+	}else if(wantAdv && !advertising){
+		auto err = esp_ble_gap_start_advertising((esp_ble_adv_params_t*) (lowPow ? &AdvLowPow : &AdvHiPow));
+		if(err != ESP_OK){
+			CMF_LOG(BLE_ConMan, LogLevel::Warning, "esp_ble_gap_start_advertising failed: 0x%x", err);
+		}
+	}
+}
+
 void ConManager::startAdv(){
 	wantAdv = true;
-	if(advertising) return;
+	if(advertising || quiet) return;
 	if(anySettling()){
 		CMF_LOG(BLE_ConMan, LogLevel::Info, "holding advertising until the connected peer's security settles");
 		return;
@@ -240,7 +253,7 @@ void ConManager::onAdvStartComplete(bool success){
 
 	// If our intent has flipped to "stop" between issuing the start and the event arriving,
 	// pull the trigger now to converge.
-	if(!wantAdv){
+	if(!wantAdv || quiet){
 		auto err = esp_ble_gap_stop_advertising();
 		if(err != ESP_OK){
 			CMF_LOG(BLE_ConMan, LogLevel::Warning, "esp_ble_gap_stop_advertising failed: 0x%x", err);
@@ -254,7 +267,7 @@ void ConManager::onAdvStopComplete(bool success){
 	}
 
 	// If our intent flipped to "start" between issuing the stop and the event arriving, resync.
-	if(wantAdv && !advertising){
+	if(wantAdv && !advertising && !quiet){
 		startAdv();
 	}
 }
