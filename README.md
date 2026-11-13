@@ -23,7 +23,10 @@ This fork is one of three pieces that work together:
 
 1. Download `DimensionHopper.exe` from the [releases page](../../releases) (or build it, see [tools/updater](tools/updater)).
 2. Plug the robot in by USB, switch it on (hold the power button about 1 second) and press **Scan dimensions**.
-3. Pick *Latest GitHub release* → this fork, and press **BEAM IT**. Do the same for the controller.
+3. Under **Payload**, keep *Latest GitHub release* and check the **Repo** box says `Exadon/ButterBot-Firmware-Public`
+   with a green **FORK** badge (the controller: `Exadon/ButterBotCtrl-Firmware-Public`). That's the default; if it shows
+   `CircuitMess/...` and **STOCK**, you'd be installing the original firmware - pick the Exadon one from the list.
+   Then press **BEAM IT** (or **Update both**).
 4. Optional: open the **AI** tab and follow its four steps to talk to ButterBot for real.
 
 ## What the fork adds

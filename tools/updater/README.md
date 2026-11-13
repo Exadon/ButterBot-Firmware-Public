@@ -18,8 +18,9 @@ Every button has a tooltip: hover over it to see what it does.
 - **Scan dimensions** finds the robot and the controller on USB and tells them apart (it listens for their status
   line first, and only probes boards that stay silent).
 - **Pick a payload per board:**
-  - *Latest GitHub release* from the stock CircuitMess repository or this fork (a **STOCK** / **FORK** badge shows
-    which), plus any repository you add under **Repos…**. Downloads are cached.
+  - *Latest GitHub release* from this fork (the default - `Exadon/...` with a green **FORK** badge) or the stock
+    CircuitMess firmware (**STOCK** badge), plus any repository you add under **Repos…**. Downloads are cached.
+    **Check the badge says FORK before beaming** - if you used an older Dimension Hopper it may remember the stock repo.
   - *Local .bin / backup*: a full-flash image, including a backup this app made.
   - *idf.py build folder*: everything a build produced. **Use this fork's build** picks it in one click.
 - **Only write what changed** (on by default): compares the board with the image in 64 KB pieces and skips what's

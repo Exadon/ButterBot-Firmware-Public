@@ -31,7 +31,7 @@ import tooltip
 from hopper_core import Kind
 
 APP_TITLE = "Dimension Hopper"
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 
 # --- palette: portal-fluid green on lab-floor black --------------------------------------
 BG = "#070b08"

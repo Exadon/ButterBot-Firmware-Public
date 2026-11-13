@@ -48,15 +48,16 @@ CONFIG_PATH = APP_DIR / "config.json"
 
 # Built-in choices for the "Latest GitHub release" dropdown: the stock firmware and this fork.
 # More can be added at runtime (Repos… dialog); those live in config["custom_repos"].
+# The fork first: this app ships with the fork's releases, so that's what a new user means to install.
 PRESET_REPOS = {
-    "bot": ["CircuitMess/ButterBot-Firmware-Public", "Exadon/ButterBot-Firmware-Public"],
-    "ctrl": ["CircuitMess/ButterBotCtrl-Firmware-Public", "Exadon/ButterBotCtrl-Firmware-Public"],
+    "bot": ["Exadon/ButterBot-Firmware-Public", "CircuitMess/ButterBot-Firmware-Public"],
+    "ctrl": ["Exadon/ButterBotCtrl-Firmware-Public", "CircuitMess/ButterBotCtrl-Firmware-Public"],
 }
 STOCK_OWNER = "CircuitMess"
 
 DEFAULT_CONFIG = {
-    "bot_repo": "CircuitMess/ButterBot-Firmware-Public",
-    "ctrl_repo": "CircuitMess/ButterBotCtrl-Firmware-Public",
+    "bot_repo": "Exadon/ButterBot-Firmware-Public",       # the fork by default (STOCK is one click away)
+    "ctrl_repo": "Exadon/ButterBotCtrl-Firmware-Public",
     "custom_repos": {"bot": [], "ctrl": []},
     "backup_first": True,
     "baud": 921600,
