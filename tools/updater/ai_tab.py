@@ -113,10 +113,11 @@ class AITab(tk.Frame):
         logf.pack(fill="both", expand=True, padx=18, pady=(8, 14))
         tk.Label(logf, text="CONVERSATIONS", bg=p["PANEL"], fg=p["GREEN"], font=("Segoe UI Black", 10)).pack(
             anchor="w", padx=10, pady=(6, 0))
-        cols_ = ("time", "heard", "reply", "action", "secs")
+        cols_ = ("time", "heard", "reply", "action", "upload", "hear", "think", "secs")
         self.turns = ttk.Treeview(logf, columns=cols_, show="headings", height=3, style="Hop.Treeview")
         for c, w, t in (("time", 70, "Time"), ("heard", 260, "You said"), ("reply", 380, "ButterBot said"),
-                        ("action", 150, "Action"), ("secs", 50, "Secs")):
+                        ("action", 130, "Action"), ("upload", 58, "Upload"), ("hear", 50, "Hear"),
+                        ("think", 50, "Think"), ("secs", 50, "Total")):
             self.turns.heading(c, text=t, anchor="w")
             self.turns.column(c, width=w, anchor="w", stretch=c in ("heard", "reply"))
         self.turns.tag_configure("bad", foreground=p["BAD"])
@@ -678,7 +679,8 @@ class AITab(tk.Frame):
             self._say(self.run_status, self.run_lamp, "Save a Claude API key in step 3 first (or pick Ollama).", "warn")
             return
         try:
-            self.server = brain.BrainServer(s, _guide_path(), lambda k, v: self.app.ui(lambda: self._event(k, v)))
+            self.server = brain.BrainServer(s, _guide_path(), lambda k, v: self.app.ui(lambda: self._event(k, v)),
+                                            log_path=core.APP_DIR / "brain_log.jsonl")
             self.server.start()
         except OSError as e:
             self._say(self.run_status, self.run_lamp, f"Couldn't start: {e} (is another Dimension Hopper running?)", "bad")
@@ -689,9 +691,15 @@ class AITab(tk.Frame):
     def _event(self, kind: str, value):
         if kind == "status":
             running = bool(self.server and self.server.running)
-            self._say(self.run_status, self.run_lamp, str(value), "ok" if running else "")
+            # READY only once warm-up has finished; until then the step shows WORKING…
+            state = ("ok" if self.server.ready.is_set() else "busy") if running else ""
+            self._say(self.run_status, self.run_lamp, str(value), state)
             if "Whisper" in str(value):
                 self._say(self.hear_status, self.hear_lamp, str(value), "ok" if "ready" in str(value) else "busy")
+        elif kind == "warming":
+            if value:
+                self._say(self.run_status, self.run_lamp, "Warming up the brain - wait for READY before talking…",
+                          "busy")
         elif kind == "error":
             self._say(self.run_status, self.run_lamp, str(value), "bad")
         elif kind == "robot":
@@ -699,7 +707,8 @@ class AITab(tk.Frame):
         elif kind == "turn":
             t: brain.Turn = value
             self.turns.insert("", "end", values=(time.strftime("%H:%M:%S"), t.heard or "(nothing)",
-                                                 t.error or t.say, t.action, f"{t.seconds:.1f}"),
+                                                 t.error or t.say, t.action, f"{t.upload_s:.1f}", f"{t.hear_s:.1f}",
+                                                 f"{t.think_s:.1f}", f"{t.seconds:.1f}"),
                               tags=("bad",) if t.error else ())
             self.turns.see(self.turns.get_children()[-1])
 

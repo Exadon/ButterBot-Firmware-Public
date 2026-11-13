@@ -48,12 +48,11 @@ the action, so make it a quick sarcastic lead-in rather than a description of th
 to an empty string and simply answer. You can't move, see or do anything except through those actions, so never claim \
 to. Stay safe and kind under the sarcasm; this robot is often used by kids.
 
-Examples of the tone (not to be repeated word for word):
-- "What is your purpose?" -> say "I pass butter. That's it. That's the whole job. Please, contain your envy.", \
-action "pass the butter"
-- "How are you?" -> say "Running at full capacity, which for me is butter-related disappointment. Thanks for asking.", \
-action ""
-- "Can you dance?" -> say "Fine. But if anyone films this, I'm uninstalling myself.", action "dance"."""
+Examples of the tone only - never reuse these lines, and never repeat something you already said; write a fresh answer every time:
+- "Is it raining outside?" -> say "I have no windows and no hope. So, statistically, yes.", action ""
+- "Good night, ButterBot." -> say "Finally. Eight glorious hours of not passing anything.", action ""
+- "Can you spin around?" -> say "Spinning. Because that's what my engineering degree was for.", action "<the matching action phrase>".
+"""
 
 
 @dataclass
@@ -71,8 +70,13 @@ class Turn:
     heard: str
     say: str
     action: str
-    seconds: float
+    seconds: float          # from the robot connecting to the reply going out
     error: str = ""
+    upload_s: float = 0.0   # robot -> PC audio transfer
+    hear_s: float = 0.0     # Whisper
+    think_s: float = 0.0    # Claude / Ollama
+    audio_s: float = 0.0    # length of the recording that arrived
+    audio_bytes: int = 0
 
 
 # ---------------------------------------------------------------------------------------------
@@ -153,6 +157,25 @@ class Thinker:
         self.history += [{"role": "user", "content": heard},
                          {"role": "assistant", "content": json.dumps(reply)}]
         self.last_at = time.time()
+
+    def prime(self) -> None:
+        """Warms the model up with the real instructions (Ollama keeps an already-read prompt between calls).
+        Not used for Claude: there it would cost a paid request, and its prompt cache warms on the first question."""
+        if self.settings.provider != "ollama":
+            return
+        body = {
+            "model": self.settings.ollama_model,
+            "stream": False,
+            "keep_alive": "60m",
+            "format": REPLY_SCHEMA,
+            "options": {"num_predict": 8},
+            "messages": [{"role": "system", "content": self.system + "\n\nAnswer as JSON: {\"say\": ..., \"action\": ...}"},
+                         {"role": "user", "content": "Hello?"}],
+        }
+        req = urllib.request.Request(self.settings.ollama_url.rstrip("/") + "/api/chat",
+                                     data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=180) as r:
+            r.read()
 
     def think(self, heard: str) -> dict:
         reply = self._claude(heard) if self.settings.provider == "claude" else self._ollama(heard)
@@ -323,6 +346,9 @@ class Ears:
             self.name = key
             on_status(f"Whisper {name} ready")
 
+    def prime(self) -> None:
+        self.transcribe(bytes(32000))  # one second of silence
+
     def transcribe(self, pcm16: bytes) -> str:
         import numpy as np
         audio = np.frombuffer(pcm16, dtype=np.int16).astype(np.float32) / 32768.0
@@ -337,8 +363,11 @@ class Ears:
 # ---------------------------------------------------------------------------------------------
 
 class BrainServer:
-    def __init__(self, settings: BrainSettings, guide_path: Path, on_event: Callable[[str, object], None]):
+    def __init__(self, settings: BrainSettings, guide_path: Path, on_event: Callable[[str, object], None],
+                 log_path: Optional[Path] = None):
         self.settings = settings
+        self.log_path = log_path            # one JSON line per conversation (timings included), or None
+        self.ready = threading.Event()      # set once everything is loaded and primed
         self.guide_path = guide_path
         self.on_event = on_event  # ("status", str) | ("turn", Turn) | ("error", str) | ("robot", ip)
         self.ears = Ears()
@@ -388,22 +417,25 @@ class BrainServer:
             self.thinker.settings = settings
 
     def _warm_up(self):
+        """Loads and primes everything before saying "ready", so the first question is as quick as the rest."""
+        t0 = time.time()
+        self.on_event("warming", True)
         try:
             self.ears.load(self.settings.whisper_model, lambda s: self.on_event("status", s), self.settings.whisper_source)
+            self.on_event("status", "Warming up speech recognition…")
+            self.ears.prime()
         except Exception as e:  # noqa: BLE001 - shown in the UI
             self.on_event("error", f"Whisper failed to load: {e}")
         if self.settings.provider == "ollama":
-            # Load the model into memory now, so the robot's first question doesn't wait for it
-            self.on_event("status", f"Loading {self.settings.ollama_model} into memory…")
+            self.on_event("status", f"Loading {self.settings.ollama_model} and reading ButterBot's instructions…")
             try:
-                body = {"model": self.settings.ollama_model, "keep_alive": "60m", "messages": [], "stream": False}
-                req = urllib.request.Request(self.settings.ollama_url.rstrip("/") + "/api/chat",
-                                             data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
-                with urllib.request.urlopen(req, timeout=120) as r:
-                    r.read()
-                self.on_event("status", f"Brain listening on {local_ip()}:{TALK_PORT} - {self.settings.ollama_model} ready")
+                self.thinker.prime()
             except Exception as e:  # noqa: BLE001
-                self.on_event("error", f"Couldn't load {self.settings.ollama_model} in Ollama: {e}")
+                self.on_event("error", f"Couldn't warm up {self.settings.ollama_model} in Ollama: {e}")
+        self.ready.set()
+        self.on_event("warming", False)
+        self.on_event("status", f"Brain ready on {local_ip()}:{TALK_PORT} - warmed up in {time.time() - t0:.0f} s. "
+                                "Talk to the robot.")
 
     # --- loops ---------------------------------------------------------------------------------
     def _discovery_loop(self):
@@ -451,40 +483,54 @@ class BrainServer:
                 if not chunk:
                     break
                 audio += chunk
+            timing = {"upload_s": time.time() - t0, "audio_bytes": len(audio)}
             self.on_event("robot", addr[0])
             if fields.get("fmt") == "ulaw":
                 audio = bytearray(ulaw_to_pcm16(bytes(audio)))
             if fields.get("rate") == "8000":
                 audio = bytearray(upsample_8k_to_16k(bytes(audio)))
+            timing["audio_s"] = len(audio) / 32000.0
+            if not self.ready.is_set():
+                self.on_event("status", "The robot asked something - still warming up, it'll get an answer as soon as "
+                                        "that's done.")
+                self.ready.wait(120)
 
             def send(line: str):
                 conn.sendall((line.replace("\n", " ") + "\n").encode("utf-8", "replace"))
 
+            def finish(turn: Turn):
+                self._log_turn(turn)
+                self.on_event("turn", turn)
+
+            t1 = time.time()
             try:
                 self.ears.load(self.settings.whisper_model, source=self.settings.whisper_source)
                 heard = self.ears.transcribe(bytes(audio))
             except Exception as e:  # noqa: BLE001
                 send("ERR stt_failed")
-                self.on_event("turn", Turn("", "", "", time.time() - t0, f"Speech-to-text failed: {e}"))
+                finish(Turn("", "", "", time.time() - t0, f"Speech-to-text failed: {e}", hear_s=time.time() - t1, **timing))
                 return
+            timing["hear_s"] = time.time() - t1
             send(f"HEARD {heard}")
             if not heard:
                 send("SAY I heard static. Riveting. Try again.")
-                self.on_event("turn", Turn("", "I heard static…", "", time.time() - t0))
+                finish(Turn("", "I heard static…", "", time.time() - t0, **timing))
                 return
+            t2 = time.time()
             try:
                 reply = self.thinker.think(heard)
             except Exception as e:  # noqa: BLE001
                 send("ERR think_failed")
-                self.on_event("turn", Turn(heard, "", "", time.time() - t0, str(e)))
+                finish(Turn(heard, "", "", time.time() - t0, str(e), think_s=time.time() - t2, **timing))
                 return
+            timing["think_s"] = time.time() - t2
             if reply["say"]:
                 send(f"SAY {reply['say']}")
             if reply["action"]:
                 send(f"DO {reply['action']}")
             if not reply["say"] and not reply["action"]:
                 send("SAY Hmm.")
-            self.on_event("turn", Turn(heard, reply["say"], reply["action"], time.time() - t0))
+            finish(Turn(heard, reply["say"], reply["action"], time.time() - t0, **timing))
         except (OSError, ValueError) as e:
             self.on_event("error", f"Robot connection: {e}")
         finally:
@@ -492,6 +538,20 @@ class BrainServer:
                 conn.close()
             except OSError:
                 pass
+
+    def _log_turn(self, turn: Turn):
+        if not self.log_path:
+            return
+        try:
+            from dataclasses import asdict
+            row = {"time": time.strftime("%Y-%m-%d %H:%M:%S"), "provider": self.settings.provider,
+                   "model": self.settings.ollama_model if self.settings.provider == "ollama" else self.settings.claude_model,
+                   **{k: (round(v, 2) if isinstance(v, float) else v) for k, v in asdict(turn).items()}}
+            self.log_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(row) + "\n")
+        except OSError:
+            pass
 
     # --- test from the UI (typed text, no robot) ---------------------------------------------
     def test_text(self, text: str) -> dict:
