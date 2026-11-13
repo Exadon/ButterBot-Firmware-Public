@@ -2,7 +2,14 @@
 #   powershell -ExecutionPolicy Bypass -File build_exe.ps1
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
-if (-not (Test-Path .venv)) { py -3 -m venv .venv }
+if (-not (Test-Path .venv)) {
+    # CI (actions/setup-python) says which Python to use; locally, 3.13 - the speech-to-text packages
+    # (ctranslate2, av, onnxruntime) publish Windows wheels up to 3.13, so "the newest Python 3" may not work.
+    if ($env:pythonLocation) { & (Join-Path $env:pythonLocation "python.exe") -m venv .venv }
+    else { py -3.13 -m venv .venv; if ($LASTEXITCODE -ne 0) { py -3 -m venv .venv } }
+    if ($LASTEXITCODE -ne 0) { throw "couldn't create the Python environment" }
+}
+Write-Host "Python: $(.\.venv\Scripts\python --version 2>&1)"
 $exe = Join-Path $PSScriptRoot "dist\DimensionHopper.exe"
 if (Get-Process DimensionHopper -ErrorAction SilentlyContinue) {
     throw "DimensionHopper.exe is running - close it first (Windows locks a running exe, so it can't be replaced)."
