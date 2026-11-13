@@ -4,7 +4,7 @@ Dimension Hopper - AI tab: guided setup for ButterBot's AI conversation mode, an
 Four steps, each with a status lamp:
   1. Robot WiFi    - name + password typed here and sent to the robot over USB (never on the controller)
   2. Hearing       - Whisper speech-to-text model, runs on this PC
-  3. Thinking      - Claude (your own API key, kept in Windows Credential Manager) or Ollama (free, local)
+  3. Thinking      - Ollama (free, runs on this PC)
   4. Turn it on    - start the brain here, switch AI mode on in the robot, test
 
 The brain only runs while Dimension Hopper is open. Without it the robot uses its offline voice commands.
@@ -32,16 +32,14 @@ WHAT YOU NEED
 - A 2.4 GHz WiFi network (the robot can't use 5 GHz). This PC must be on the same network.
 - Dimension Hopper open with the brain started. When it isn't, ButterBot says its brain is offline and uses its \
 built-in commands - nothing breaks.
-- For thinking, ONE of:
-  - Claude: an API key from console.anthropic.com (pay-as-you-go; a conversation costs a fraction of a cent). The \
-key is stored in Windows Credential Manager and never sent to the robot.
-  - Ollama: free, runs on this PC. Install it from ollama.com, then in a terminal run:  ollama pull llama3.2
+- Ollama for the thinking: free, runs on this PC. Install it from ollama.com, then in a terminal run:
+    ollama pull llama3.1:8b      (or  ollama pull llama3.2  - smaller and faster, for PCs without a strong graphics card)
 
 FIRST-TIME SETUP
 1. Plug the robot in by USB and switch it on. Pick its port at the top of this tab.
 2. Type your WiFi name and password and hit "Send to robot", then "Test robot WiFi".
 3. Pick a Whisper model and hit "Load" (it downloads once).
-4. Choose Claude (paste your key, Save) or Ollama (Check), then "Try it" with a typed message.
+4. In step 3 press "Check" (it finds Ollama's models), then "Try it" with a typed message.
 5. With the robot still plugged in, press "Start AI conversations": it starts the brain and sets the robot up to use \
 it (its AI setting and this PC's address). Then unplug it, press listen and talk. From then on Start works without the \
 robot plugged in - unless this PC's address changes (the status line says so). To stop that ever happening, give this \
@@ -550,11 +548,17 @@ class AITab(tk.Frame):
     def _build_thinking(self, parent):
         p = self.pal
         body, self.think_lamp, self.think_status = self._card(parent, "3", "THINKING (THE AI)")
-        self.provider_var = tk.StringVar(value=self.cfg.get("ai_provider", "claude"))
-        for i, (val, text) in enumerate((("claude", "Claude - your own API key"), ("ollama", "Ollama - free, on this PC"))):
-            tk.Radiobutton(body, text=text, value=val, variable=self.provider_var, command=self._refresh_thinking_state,
-                           bg=p["PANEL"], fg=p["TEXT"], selectcolor=p["PANEL_HI"], activebackground=p["PANEL"],
-                           highlightthickness=0, font=("Segoe UI", 9)).grid(row=0, column=i, sticky="w")
+        provider = self.cfg.get("ai_provider", "ollama") if OFFER_CLAUDE else "ollama"
+        self.provider_var = tk.StringVar(value=provider)
+        if OFFER_CLAUDE:
+            for i, (val, text) in enumerate((("claude", "Claude - your own API key"), ("ollama", "Ollama - free, on this PC"))):
+                tk.Radiobutton(body, text=text, value=val, variable=self.provider_var,
+                               command=self._refresh_thinking_state, bg=p["PANEL"], fg=p["TEXT"],
+                               selectcolor=p["PANEL_HI"], activebackground=p["PANEL"], highlightthickness=0,
+                               font=("Segoe UI", 9)).grid(row=0, column=i, sticky="w")
+        else:
+            tk.Label(body, text="Ollama - free, runs on this PC", bg=p["PANEL"], fg=p["TEXT"],
+                     font=("Segoe UI", 9)).grid(row=0, column=0, columnspan=2, sticky="w")
 
         self.claude_frame = tk.Frame(body, bg=p["PANEL"])
         self.claude_frame.grid(row=1, column=0, columnspan=3, sticky="w", pady=(4, 0))
@@ -870,6 +874,11 @@ class AITab(tk.Frame):
     def shutdown(self):
         if self.server and self.server.running:
             self.server.stop()
+
+
+# Claude (paid API key) is implemented in brain.py but not offered until it has been tested end to end.
+# Set to True to bring back the provider choice, the key box and the help text.
+OFFER_CLAUDE = False
 
 
 def _open_url(url: str):
