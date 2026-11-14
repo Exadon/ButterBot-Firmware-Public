@@ -31,6 +31,10 @@ TIPS = {
     "▶ Start camera": "Show what the robot's camera sees (about 1-2 frames a second over USB). Works while the robot "
                       "is idle.",
     "■ Stop camera": "Stop the camera view.",
+    "▶ Mirror screen": "Show the controller's screen here, live, exactly as the controller shows it. Only what "
+                       "changes is sent over USB, so menus and the stick keep up.",
+    "■ Stop mirror": "Stop mirroring the controller's screen.",
+    "Save screenshot…": "Save the controller's screen as a PNG picture (4x size, sharp pixels).",
     "Save snapshot…": "Save the current camera frame as a picture.",
     # Personalize
     "Find robot": "Look through the USB ports for the robot.",

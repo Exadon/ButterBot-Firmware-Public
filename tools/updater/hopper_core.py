@@ -967,7 +967,7 @@ def read_status(port: str, timeout_s: float = 12.0, exclusive: bool = True) -> D
 # Diagnostics session (fork firmware streams "[BBDIAG] ..." while asked to with "diag on")
 # ---------------------------------------------------------------------------------------------
 
-DIAG_RE = re.compile(r"\[(BBDIAG|BBSTAT|BBDRIVE|BBFORGET|BBVOICE|BBCAM)\]((?:\s+\w+=\S+)+)")
+DIAG_RE = re.compile(r"\[(BBDIAG|BBSTAT|BBDRIVE|BBFORGET|BBVOICE|BBCAM|BBSCR)\]((?:\s+\w+=\S+)+)")
 
 
 class DiagSession:

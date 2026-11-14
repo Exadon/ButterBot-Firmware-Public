@@ -313,7 +313,14 @@ class DiagnosticsTab(tk.Frame):
         p = self.pal
         f = self._panel(parent, "CONTROLLER")
         self._conn_row(f, self.links["ctrl"])
-        cv = self.ctrl_cv = tk.Canvas(f, width=470, height=300, bg=p["PANEL"], highlightthickness=0)
+        inner = tk.Frame(f, bg=p["PANEL"])
+        inner.pack(fill="both", expand=True)
+        left = tk.Frame(inner, bg=p["PANEL"])
+        left.grid(row=0, column=0, sticky="nw")
+        right = tk.Frame(inner, bg=p["PANEL"])
+        right.grid(row=0, column=1, sticky="nw", padx=(4, 8))
+        self._build_screen(right)
+        cv = self.ctrl_cv = tk.Canvas(left, width=470, height=300, bg=p["PANEL"], highlightthickness=0)
         cv.pack(padx=8, pady=6)
         # joystick plot: processed position (-100..100) with the 50% menu threshold ring
         self.jx0, self.jy0, self.jr = 110, 140, 100
@@ -448,6 +455,171 @@ class DiagnosticsTab(tk.Frame):
                 fh.write(self.cam_jpeg)
             self.cam_status.configure(text=f"Saved {path}", fg=self.pal["GREEN"])
 
+    # --- controller screen mirror ---------------------------------------------------------------------
+    # "scr" makes the controller reply with one [BBSCR] line: a 16-byte row mask, then the changed rows' RGB565
+    # pixels run-length coded (see the controller's main.cpp). "scr full" sends every row. Only changes travel, so a
+    # still menu costs a few bytes and the view keeps up with the stick.
+    SCR_SCALE = 2
+    SCR_W = SCR_H = 128
+    SCR_POLL_MS = 120       # gap between a reply and the next request
+    SCR_TIMEOUT_S = 6.0     # no reply: ask for a full frame again
+
+    def _build_screen(self, f):
+        p = self.pal
+        tk.Label(f, text="SCREEN", bg=p["PANEL"], fg=p["GREEN"], font=("Segoe UI Black", 10)).pack(anchor="w",
+                                                                                                   pady=(6, 0))
+        size = self.SCR_W * self.SCR_SCALE
+        box = tk.Frame(f, bg="#040705", width=size, height=size)
+        box.pack(pady=(4, 4))
+        box.pack_propagate(False)
+        self.scr_img_lbl = tk.Label(box, bg="#040705", text="not mirroring", fg=p["DIM"], font=("Segoe UI", 9))
+        self.scr_img_lbl.pack(fill="both", expand=True)
+        row = tk.Frame(f, bg=p["PANEL"])
+        row.pack(fill="x", pady=(0, 4))
+        self.scr_btn = self.app.button(row, "▶ Mirror screen", self.toggle_screen, small=True)
+        self.scr_btn.pack(side="left")
+        self.app.button(row, "Save screenshot…", self.save_screenshot, small=True).pack(side="left", padx=6)
+        self.scr_status = tk.Label(f, text="Shows exactly what the controller's screen shows, live.",
+                                   bg=p["PANEL"], fg=p["DIM"], font=("Segoe UI", 8), anchor="w", justify="left",
+                                   wraplength=size)
+        self.scr_status.pack(fill="x", pady=(0, 8))
+        self.scr_on = False
+        self.scr_photo = None
+        self.scr_rgb = None          # bytearray, 128*128*3 - the picture as we know it
+        self.scr_asked_at = 0.0
+        self.scr_updates = []        # arrival times of frames that changed something
+        self.scr_last_kb = 0.0
+
+    def _ctrl_ready(self) -> bool:
+        link = self.links["ctrl"]
+        return link.session is not None and link.dev in ("", "ctrl")
+
+    def toggle_screen(self):
+        if self.scr_on:
+            self._screen_stop("Stopped.")
+            return
+        if not self._ctrl_ready():
+            self.scr_status.configure(text="Connect to the controller's port first.", fg=self.pal["WARN"])
+            return
+        self.scr_on = True
+        self.scr_updates = []
+        tooltip.relabel(self.scr_btn, "■ Stop mirror")
+        self.scr_status.configure(text="Waiting for the first picture…", fg=self.pal["DIM"])
+        self._screen_ask(full=True)
+        self.after(1000, self._screen_watch)
+
+    def _screen_stop(self, why: str):
+        self.scr_on = False
+        tooltip.relabel(self.scr_btn, "▶ Mirror screen")
+        self.scr_status.configure(text=why, fg=self.pal["DIM"])
+
+    def _screen_ask(self, full=False):
+        link = self.links["ctrl"]
+        if self.scr_on and link.session is not None:
+            link.session.send("scr full" if full or self.scr_rgb is None else "scr")
+            self.scr_asked_at = time.time()
+
+    def _screen_watch(self):
+        if not self.scr_on:
+            return
+        if time.time() - self.scr_asked_at > self.SCR_TIMEOUT_S:
+            self.scr_status.configure(text="No reply - the controller may need the latest fork firmware. Retrying…",
+                                      fg=self.pal["WARN"])
+            self._screen_ask(full=True)
+        self.after(1000, self._screen_watch)
+
+    @staticmethod
+    def decode_screen(data: bytes, w: int, h: int) -> tuple[list[int], list[int]]:
+        """[BBSCR] payload -> (included row numbers, their RGB565 pixels). Raises ValueError if it doesn't add up."""
+        mask_len = h // 8
+        if len(data) < mask_len:
+            raise ValueError("short frame")
+        rows = [y for y in range(h) if data[y // 8] >> (y % 8) & 1]
+        px: list[int] = []
+        o, n = mask_len, len(data)
+        while o < n:
+            c = data[o]
+            o += 1
+            if c >= 0x80:
+                if o + 2 > n:
+                    raise ValueError("cut-off run")
+                px.extend([data[o] | data[o + 1] << 8] * ((c & 0x7F) + 2))
+                o += 2
+            else:
+                cnt = c + 1
+                if o + 2 * cnt > n:
+                    raise ValueError("cut-off pixels")
+                px.extend(data[o + 2 * i] | data[o + 2 * i + 1] << 8 for i in range(cnt))
+                o += 2 * cnt
+        if len(px) != len(rows) * w:
+            raise ValueError(f"{len(px)} pixels for {len(rows)} rows")
+        return rows, px
+
+    def _screen_reply(self, fields: dict):
+        p = self.pal
+        if "d" not in fields:
+            why = {"nomem": "the controller is short of memory", "nodisplay": "the screen isn't running"}.get(
+                fields.get("busy", ""), fields.get("busy", "busy"))
+            self.scr_status.configure(text=f"Paused: {why}. Retrying…", fg=p["WARN"])
+            if self.scr_on:
+                self.after(1000, lambda: self._screen_ask(full=True))
+            return
+        try:
+            w, h = int(fields.get("w", 128)), int(fields.get("h", 128))
+            if (w, h) != (self.SCR_W, self.SCR_H):
+                raise ValueError(f"unexpected size {w}x{h}")
+            data = base64.b64decode(fields["d"])
+            rows, px = self.decode_screen(data, w, h)
+            if fields.get("key") != "1" and self.scr_rgb is None:
+                raise ValueError("missed the full picture")
+            if self.scr_rgb is None:
+                self.scr_rgb = bytearray(w * h * 3)
+            rgb = self.scr_rgb
+            k = 0
+            for y in rows:
+                o = y * w * 3
+                for v in px[k:k + w]:
+                    r5, g6, b5 = v >> 11 & 31, v >> 5 & 63, v & 31
+                    rgb[o] = r5 << 3 | r5 >> 2
+                    rgb[o + 1] = g6 << 2 | g6 >> 4
+                    rgb[o + 2] = b5 << 3 | b5 >> 2
+                    o += 3
+                k += w
+            now = time.time()
+            if rows:
+                from PIL import Image, ImageTk
+                img = Image.frombytes("RGB", (w, h), bytes(rgb))
+                size = w * self.SCR_SCALE
+                self.scr_photo = ImageTk.PhotoImage(img.resize((size, size), Image.NEAREST))
+                self.scr_img_lbl.configure(image=self.scr_photo, text="")
+                self.scr_updates = [t for t in self.scr_updates if now - t < 5] + [now]
+                self.scr_last_kb = len(data) / 1024
+            recent = [t for t in self.scr_updates if now - t < 5]
+            self.scr_status.configure(
+                text=f"Live · {len(recent) / 5:.1f} changes/s · last change {self.scr_last_kb:.1f} KB" if recent
+                else "Live · the screen isn't changing", fg=p["GREEN"])
+            if self.scr_on:
+                self.after(self.SCR_POLL_MS, self._screen_ask)
+        except Exception as e:  # noqa: BLE001 - a garbled line: start again from a full picture
+            self.scr_status.configure(text=f"Couldn't read the picture ({e}) - retrying", fg=p["WARN"])
+            self.scr_rgb = None
+            if self.scr_on:
+                self.after(self.SCR_POLL_MS, lambda: self._screen_ask(full=True))
+
+    def save_screenshot(self):
+        if self.scr_rgb is None:
+            self.scr_status.configure(text="No picture yet - start the mirror first.", fg=self.pal["WARN"])
+            return
+        from tkinter import filedialog
+        from PIL import Image
+        path = filedialog.asksaveasfilename(parent=self, title="Save controller screenshot", defaultextension=".png",
+                                            initialfile=time.strftime("controller-screen-%Y%m%d-%H%M%S.png"),
+                                            filetypes=[("PNG picture", "*.png")])
+        if path:
+            img = Image.frombytes("RGB", (self.SCR_W, self.SCR_H), bytes(self.scr_rgb))
+            img.resize((self.SCR_W * 4, self.SCR_H * 4), Image.NEAREST).save(path)
+            self.scr_status.configure(text=f"Saved {path} (4x size)", fg=self.pal["GREEN"])
+
     # --- connection -------------------------------------------------------------------------------------
     def _bot_ready(self) -> bool:
         link = self.links["bot"]
@@ -513,6 +685,9 @@ class DiagnosticsTab(tk.Frame):
                     self._camera_stop("Stopped - disconnected.")
             else:
                 self._set_ctrl({})
+                if self.scr_on:
+                    self._screen_stop("Stopped - disconnected.")
+                self.scr_rgb = None
         self.app.ui(ui)
 
     def _on_line(self, link: "_Link", kind: str, fields: dict, line: str):
@@ -523,6 +698,12 @@ class DiagnosticsTab(tk.Frame):
                     self._append_log(f"{tag} | {line}")
                 if link.kind == "bot":
                     self._camera_reply(fields)
+                return
+            if kind == "BBSCR":
+                if "d" not in fields:
+                    self._append_log(f"{tag} | {line}")
+                if link.kind == "ctrl" and self.scr_on:
+                    self._screen_reply(fields)
                 return
             self._append_log(f"{tag} | {line}")
             dev = fields.get("dev", "") if kind in ("BBDIAG", "BBSTAT") else ""
