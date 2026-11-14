@@ -18,6 +18,7 @@
 #include <fstream>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <span>
 #include <vector>
 #include <Util/ServiceLocator.h>
@@ -28,6 +29,13 @@
 #include "ScenarioState.h"
 #include "Services/Com.h"
 #include "Services/ScenarioRoutineService.h"
+
+// Fork: the last AI conversation, for the controller's Robot status page
+namespace {
+std::mutex lastConvLock;
+std::string lastHeard;
+std::string lastSaid;
+}
 #include "Services/IRStorage.h"
 #include "Routines/IRActionRoutine.h"
 #include "Services/HomeWiFi.h"
@@ -539,6 +547,20 @@ void ListenState::tick(float){
         return;
     }
 
+    {
+        std::lock_guard<std::mutex> guard(lastConvLock);
+        lastHeard = r.heard;
+        lastSaid = r.say;
+    }
+
+    // Controller: subtitles - what it heard and what it's about to say
+    if(com != nullptr && (!r.heard.empty() || !r.say.empty())){
+        SubtitleData subtitle;
+        subtitle.heard = r.heard;
+        subtitle.say = r.say;
+        com->sendData(BB::State::Scenario, BB::Action::Scenario::Subtitle, subtitle);
+    }
+
     if(!r.say.empty()){
         if(Audio* audio = app->getService<Audio>()){
             audio->play(ServiceLocator::SpeechAudioGenInstance.get(),
@@ -557,6 +579,12 @@ void ListenState::tick(float){
         printf("[BBAI] event=unknown_action\n");
     }
     sm->transitionTo<IdleState>();
+}
+
+void ListenState::lastConversation(std::string& heard, std::string& said){
+    std::lock_guard<std::mutex> guard(lastConvLock);
+    heard = lastHeard;
+    said = lastSaid;
 }
 
 void ListenState::onRC(){

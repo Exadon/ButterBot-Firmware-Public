@@ -678,6 +678,36 @@ private:
 		return out;
 	}
 
+	/** Fork: the controller's Robot status page asked (Ctrl::Status). */
+	void sendRobotStatus(){
+		Com* com = getService<Com>();
+		if(com == nullptr || com->getStatus() != Com::ConnStatus::Connected) return;
+		const Battery* battery = getService<Battery>();
+		const HomeWiFi::Config c = HomeWiFi::load();
+		auto kb = [](size_t bytes){ return (uint8_t) std::min<size_t>(bytes / 1024, 255); };
+
+		RobotStatusData st;
+		if(battery != nullptr){
+			st.battery = (uint8_t) std::clamp(battery->getPerc() + 0.5f, 0.0f, 100.0f);
+			switch(battery->getChargingState()){
+				case ChargingState::Unplugged: st.charge = 0; break;
+				case ChargingState::Charging: st.charge = 1; break;
+				case ChargingState::Full: st.charge = 2; break;
+			}
+		}
+		st.ramKb = kb(heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+		st.ramMinKb = kb(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL));
+		st.wifi = c.ssid.empty() ? 0 : 1;
+		st.ai = c.aiEnabled ? 1 : 0;
+		st.brain = c.brainIp != 0 ? 1 : 0;
+		st.upMin = (uint16_t) std::min<uint64_t>(millis() / 60000, 65535);
+		st.fw = esp_app_get_description()->version;
+		st.network = c.ssid;
+		st.problem = HomeWiFi::lastProblem();
+		ListenState::lastConversation(st.heard, st.said);
+		com->sendData(BB::State::Idle, BB::Action::Idle::RobotStatus, st);
+	}
+
 	static void printWifi(){
 		const HomeWiFi::Config c = HomeWiFi::load();
 		std::string ssidHex;
@@ -1106,6 +1136,11 @@ private:
 	}
 
 	void onCommand(const Ctrl::Command command){
+		if(command == Ctrl::Status){
+			// Reads the WiFi settings from flash, so it runs on an internal-stack task
+			runFlashJob([this]{ sendRobotStatus(); });
+			return;
+		}
 		if(command != Ctrl::ShutUp){
 			return;
 		}

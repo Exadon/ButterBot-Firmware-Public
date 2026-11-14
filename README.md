@@ -39,7 +39,9 @@ runs locally: [Whisper](https://github.com/SYSTRAN/faster-whisper) turns speech 
 
 - The robot records right after its prompt while WiFi connects in the background, trims the silence and sends a
   compact 8 kHz recording; a typical answer arrives about 5 seconds after you stop talking.
-- The controller shows what's happening: *Listening*, *Heard you*, *Consulting my brain…*
+- The controller shows what's happening: *Listening*, *Heard you*, *Consulting my brain…*, then subtitles of what it
+  heard and what it is saying.
+- Answers the controller's *Robot Status* page (battery, memory, WiFi, AI mode, last conversation, firmware).
 - If the PC isn't reachable, the robot says what's wrong in plain words (WiFi not found, wrong password, brain not
   running…) and uses its built-in voice commands for the next two minutes. Nothing breaks.
 - WiFi is only switched on for a conversation and off again straight after, because it shares memory and the radio

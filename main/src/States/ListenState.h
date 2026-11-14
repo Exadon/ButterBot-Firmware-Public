@@ -1,6 +1,7 @@
 #ifndef BUTTERBOT_FIRMWARE_LISTENSTATE_H
 #define BUTTERBOT_FIRMWARE_LISTENSTATE_H
 
+#include <string>
 #include "State.h"
 #include <memory>
 #include "CtrlData.h"
@@ -18,6 +19,9 @@ public:
 
     // Fork: end the pause on AI after a failed attempt (Dimension Hopper's Start sends "ai on" once the brain runs)
     static void clearAiPause();
+
+    /** Fork: the last AI conversation (what was heard, what the robot answered), for the controller's status page. */
+    static void lastConversation(std::string& heard, std::string& said);
 
     void tick(float deltaTime) override;
     int64_t getDynamicTickInterval() const override;

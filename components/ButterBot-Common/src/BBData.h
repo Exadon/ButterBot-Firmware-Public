@@ -23,7 +23,9 @@ struct BB {
 		enum class Idle {
 			None, Wander, Ramble, Person, Poke, Summon, Fall, UpsideDown, PickUp, Shake, ModuleChange, Gas, Intruder,
 			BatteryLow, Charging, ChargingFull, PhoneNotif, PhoneConnect, Observe, GasConfigureStart, GasConfigureEnd,
-			BatteryLevel, ShutUp, CantMove, SettingsChange, SettingsSync
+			BatteryLevel, ShutUp, CantMove, SettingsChange, SettingsSync,
+			// --- fork additions: append only ---
+			RobotStatus // RobotStatusData: reply to Ctrl::Status (controller's Robot status screen)
 		} idle;
 
 		enum class Scenario {
@@ -48,6 +50,7 @@ struct BB {
 			// --- fork additions: append only, so stock firmware keeps the same numbering ---
 			Chat,       // ChatData: one of the chat voice lines (Phrase::Chat reply index)
 			OpenPortal, // OpenPortalData: controller plays a portal animation
+			Subtitle,   // SubtitleData: AI mode - what the robot heard and what it answers
 		} scenario;
 
 		enum class Listen {
@@ -428,6 +431,84 @@ struct ChatData : BBData {
 
 struct OpenPortalData : BBData {
 	uint16_t durationMs;
+};
+
+/** Fork: AI-mode subtitles - what the PC heard and the robot's spoken answer. Variable length. */
+struct SubtitleData : BBData {
+	static constexpr uint8_t MaxField = 100;
+
+	std::string heard;
+	std::string say;
+
+	std::vector<uint8_t> serialize() const{
+		std::vector<uint8_t> buf;
+		ComSerial::writeString(buf, heard, MaxField);
+		ComSerial::writeString(buf, say, MaxField);
+		return buf;
+	}
+
+	static SubtitleData deserialize(const uint8_t* data, size_t size){
+		SubtitleData d;
+		const uint8_t* cur = data;
+		const uint8_t* end = data + size;
+		d.heard = ComSerial::readString(cur, end);
+		d.say = ComSerial::readString(cur, end);
+		return d;
+	}
+};
+
+/** Fork: the robot's health, sent when the controller asks (Ctrl::Status). Variable length. */
+struct RobotStatusData : BBData {
+	static constexpr uint8_t MaxText = 40;
+	static constexpr uint8_t MaxSaid = 60;
+
+	uint8_t battery = 0;     // percent
+	uint8_t charge = 0;      // 0 unplugged, 1 charging, 2 full
+	uint8_t ramKb = 0;       // free internal RAM now (KB, capped at 255)
+	uint8_t ramMinKb = 0;    // lowest since boot
+	uint8_t wifi = 0;        // 0 not set up, 1 set up
+	uint8_t ai = 0;          // 0 off, 1 on
+	uint8_t brain = 0;       // 0 unknown, 1 address saved
+	uint16_t upMin = 0;      // minutes since boot
+	std::string fw;          // firmware version
+	std::string network;     // WiFi network name
+	std::string problem;     // last AI problem ("none" when the last try worked)
+	std::string heard;       // last thing it heard in AI mode
+	std::string said;        // and what it answered
+
+	std::vector<uint8_t> serialize() const{
+		std::vector<uint8_t> buf;
+		for(uint8_t v : { battery, charge, ramKb, ramMinKb, wifi, ai, brain }) ComSerial::writeU8(buf, v);
+		ComSerial::writeU8(buf, upMin & 0xff);
+		ComSerial::writeU8(buf, upMin >> 8);
+		ComSerial::writeString(buf, fw, MaxText);
+		ComSerial::writeString(buf, network, 32);
+		ComSerial::writeString(buf, problem, 24);
+		ComSerial::writeString(buf, heard, MaxSaid);
+		ComSerial::writeString(buf, said, MaxSaid);
+		return buf;
+	}
+
+	static RobotStatusData deserialize(const uint8_t* data, size_t size){
+		RobotStatusData d;
+		const uint8_t* cur = data;
+		const uint8_t* end = data + size;
+		d.battery = ComSerial::readU8(cur, end);
+		d.charge = ComSerial::readU8(cur, end);
+		d.ramKb = ComSerial::readU8(cur, end);
+		d.ramMinKb = ComSerial::readU8(cur, end);
+		d.wifi = ComSerial::readU8(cur, end);
+		d.ai = ComSerial::readU8(cur, end);
+		d.brain = ComSerial::readU8(cur, end);
+		d.upMin = ComSerial::readU8(cur, end);
+		d.upMin |= (uint16_t) ComSerial::readU8(cur, end) << 8;
+		d.fw = ComSerial::readString(cur, end);
+		d.network = ComSerial::readString(cur, end);
+		d.problem = ComSerial::readString(cur, end);
+		d.heard = ComSerial::readString(cur, end);
+		d.said = ComSerial::readString(cur, end);
+		return d;
+	}
 };
 
 #endif //BUTTERBOT_COMMON_ACTIONDATA_H
