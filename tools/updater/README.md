@@ -168,6 +168,18 @@ own icons and animations) showing what the robot sends, the controller's whole a
 The board's raw log with filters, a table of what the robot heard and matched, a box to send console commands, and
 **Save log…**.
 
+### Problem report
+**Problem report…** (top right, next to About) saves one text file to attach to a bug report or a forum post: the
+versions of Dimension Hopper, Windows/macOS and both boards, the USB ports, each board's status, the robot's WiFi state
+and its **recent events**, the AI settings and installed Ollama models, the timings and errors of the last AI turns,
+and this session's log. It opens the file so you can read it first, then offers to start a GitHub bug report.
+
+The robot keeps its last 80 status lines (WiFi joins and failures with their reason codes, AI turns, memory, storage,
+routine runs, system errors) in memory since it switched on - also while unplugged, so plug it in afterwards and the
+report has what happened. They're lost when it switches off. Never in the report: WiFi network names and passwords,
+IP and MAC addresses, your and the robot's names, API keys, what was said to the AI, memories and facts, and your
+Windows/Mac user name.
+
 ### AI - real conversations
 
 ![AI tab](../../docs/images/ai.png)

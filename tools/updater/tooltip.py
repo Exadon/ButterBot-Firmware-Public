@@ -73,6 +73,12 @@ TIPS = {
     "Use the stock line": "Go back to the robot's own start-up line.",
     "Save reply": "Save your reply to this chat line on the robot.",
     "Use the stock reply": "Go back to the robot's own reply to this chat line.",
+    "Save lines": "Save your lines for this Summon moment on the robot.",
+    "▶ Hear one": "Have the robot say one of these lines now (one of the stock lines if the box is empty).",
+    "Use the stock lines": "Go back to the robot's own lines for this Summon moment.",
+    "Problem report…": "Save one text file about the robot, the controller and this app to attach to a bug report: "
+                       "versions, status, the robot's recent events and the AI's timings. Names, WiFi details, "
+                       "addresses and what was said are left out.",
     "About": "Who made Dimension Hopper, its version and where to find the project. Also: check for updates and "
              "reset the tab order.",
     "Update now": "Download the new Dimension Hopper, check it, swap it in and reopen. Settings and keys are kept.",

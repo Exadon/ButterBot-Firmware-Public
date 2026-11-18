@@ -6,6 +6,8 @@
 #include <esp_heap_caps.h>
 #include <nvs.h>
 #include "Util/MemMark.h"
+#include <esp_coexist.h>
+#include "BLE/ConMan.h"
 #include "Log/Log.h"
 
 DEFINE_LOG(HomeWiFi)
@@ -166,7 +168,29 @@ bool HomeWiFi::scan(std::vector<Network>& out){
 	return true;
 }
 
+/*
+ * WiFi and Bluetooth share one radio, and while it waits for the controller the robot advertises every 20 ms. With
+ * advertising on, WiFi packets are lost: uploads stall for seconds (24 KB: 27.9 s vs 2.6 s paused), and joining - the
+ * same exchange of small packets with the router - can fail with reason 205 ("connection failed"; reported on a router
+ * the robot could see fine). So for the whole WiFi session, join to stop(), WiFi gets priority and advertising pauses.
+ * It's one pause on purpose: switching advertising back on after the join and off again for the upload raced (the
+ * BLE stack starts and stops advertising asynchronously) and left it on during the upload. WiFi is only on for a few
+ * seconds per AI question; a connected controller isn't affected, a waiting one connects right after.
+ */
+HomeWiFi::~HomeWiFi(){
+	if(radioHeld || started || events) stop(); // a session that never started has nothing to undo
+}
+
 HomeWiFi::Result HomeWiFi::start(const Config& cfg, uint32_t timeoutMs){
+	if(!radioHeld){
+		radioHeld = true;
+		esp_coex_preference_set(ESP_COEX_PREFER_WIFI);
+		ConMan.setQuiet(true);
+	}
+	return join(cfg, timeoutMs);
+}
+
+HomeWiFi::Result HomeWiFi::join(const Config& cfg, uint32_t timeoutMs){
 	if(cfg.ssid.empty()) return Result::NotConfigured;
 
 	if(!bringUp()) return Result::StartFailed;
@@ -240,6 +264,11 @@ HomeWiFi::Result HomeWiFi::waitForIp(){
 }
 
 void HomeWiFi::stop(){
+	if(radioHeld){
+		radioHeld = false;
+		ConMan.setQuiet(false);
+		esp_coex_preference_set(ESP_COEX_PREFER_BALANCE);
+	}
 	up = false;
 	if(started){
 		esp_wifi_disconnect();

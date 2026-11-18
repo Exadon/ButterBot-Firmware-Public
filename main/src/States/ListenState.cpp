@@ -562,8 +562,8 @@ ListenState::~ListenState(){
     }
 }
 
-// Fork: how often the "still thinking" blip plays while the brain works on an answer
-static constexpr uint32_t ThinkingBlipMs = 2200;
+// Fork: how often the soft "still thinking" pulse plays while it connects and the brain works on an answer
+static constexpr uint32_t ThinkingBlipMs = 1200;
 
 int64_t ListenState::getDynamicTickInterval() const{
     return ai ? 50 : -1;

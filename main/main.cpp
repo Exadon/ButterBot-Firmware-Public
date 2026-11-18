@@ -1,5 +1,6 @@
 #include <Core/EntryPoint.h>
 #include "Util/MemMark.h"
+#include "Util/EventLog.h"
 #include "driver/gpio.h"
 #include <nvs_flash.h>
 #include <esp_random.h>
@@ -110,6 +111,7 @@ public:
 
 protected:
 	virtual void begin() noexcept override{
+		EventLog::install(); // fork: keep recent events for the problem report
 		Phrases::preallocate();
 		ListenState::preallocate();
 
@@ -478,6 +480,7 @@ private:
 						printf("[BBEMU] mirror=%d\n", Com::mirrorToConsole ? 1 : 0);
 					}
 					else if(line.rfind("ctrl ", 0) == 0) consoleCtrl(line.c_str() + 5);
+					else if(line == "events") printEvents();
 					else if(line == "stat") nextStatus = 0; // fork: the status line now (Dimension Hopper's status strip)
 					else if(line == "names") printNames();
 					else if(line.rfind("names ", 0) == 0) runFlashJob([args = line.substr(6)]{ setNames(args); });
@@ -848,6 +851,19 @@ private:
 	}
 
 	/*
+	 * Fork: the problem report (Dimension Hopper). "events" -> [BBEV] up=<s> n=<lines> d=<hex of "<uptime s> <line>\n"...>
+	 * The robot's recent event lines since it switched on (EventLog), oldest first.
+	 */
+	static void printEvents(){
+		const std::string all = EventLog::dump();
+		size_t n = 0;
+		for(char c : all) n += c == '\n';
+		printf("[BBEV] up=%llu n=%u d=%s\n", (unsigned long long) (esp_timer_get_time() / 1000000), (unsigned) n,
+		       all.empty() ? "-" : toHex(all).c_str());
+		EventLog::syncConsole();
+	}
+
+	/*
 	 * Fork: the owner's Summon lines and the heard/thinking beeps (Personalize tab).
 	 * "summon" / "summon set <index> <hex|->" -> [BBSUMMON] count=<moments> d=<index>:<hex>,... ("-" if none)
 	 *   index: 0 starts searching, 1 found you, 2 couldn't find you, 3 charging, 4 tapped (before a voice command); "|" separates alternatives
@@ -942,8 +958,7 @@ private:
 				return;
 			}
 			printf("[BBROUT] i=%d d=%s\n", i, toHex(UserData::routineText((size_t) i)).c_str());
-			fflush(stdout);
-			fsync(fileno(stdout));
+			EventLog::syncConsole();
 		}else if(args.rfind("run ", 0) == 0){
 			const BBStateMachine* sm = getService<BBStateMachine>();
 			const State* state = sm != nullptr ? sm->getActiveState() : nullptr;
@@ -1129,8 +1144,7 @@ private:
 			size_t outLen = 0;
 			mbedtls_base64_encode(b64.data(), b64.size(), &outLen, raw + i * LineBytes, len);
 			printf("[BBREND] i=%u d=%.*s\n", (unsigned) i, (int) outLen, (const char*) b64.data());
-			fflush(stdout);
-			fsync(fileno(stdout)); // wait until the UART has sent it: pushing ~70 KB at once drops bytes
+			EventLog::syncConsole(); // wait until the UART has sent it: pushing ~70 KB at once drops bytes
 			vTaskDelay(pdMS_TO_TICKS(10));
 		}
 		printf("[BBREND] done\n");

@@ -113,7 +113,9 @@ lowest free memory and any failed allocations). The protocol is plain text, so a
 ## Problems and ideas
 
 See [Troubleshooting](tools/updater/README.md#troubleshooting) for what the robot's messages mean. For anything else,
-open an [issue](../../issues) - there's a short form that asks for what's needed.
+open an [issue](../../issues) - there's a short form that asks for what's needed. Attach a **Problem report** from
+Dimension Hopper (button at the top): one text file with the versions, the boards' status and the robot's recent
+events, with names, WiFi details, addresses and what was said to the AI left out.
 
 ## Installing a release
 

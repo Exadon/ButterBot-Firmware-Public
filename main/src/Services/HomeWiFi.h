@@ -47,6 +47,7 @@ public:
 	static const char* lastProblem();
 
 	/** Starts WiFi and blocks until it has an IP address (or fails/times out). Call stop() afterwards either way. */
+	~HomeWiFi(); // stop(): never leaves Bluetooth advertising paused
 	Result start(const Config& cfg, uint32_t timeoutMs);
 	void stop();
 
@@ -69,6 +70,8 @@ public:
 
 private:
 	bool bringUp();
+	Result join(const Config& cfg, uint32_t timeoutMs); // start() without the radio handling
+	bool radioHeld = false; // WiFi priority + Bluetooth advertising paused, from start() to stop()
 	Result waitForIp();
 	static constexpr uint32_t DhcpWaitMs = 5000;      // after joining, before asking the router again
 	static constexpr uint32_t DhcpRetryWaitMs = 4000; // after asking again

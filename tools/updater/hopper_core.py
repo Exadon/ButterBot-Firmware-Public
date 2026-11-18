@@ -1059,11 +1059,14 @@ def console_command(port: str, command: str, reply_tag: str, timeout_s: float = 
             buf, end = b"", time.time() + timeout_s
             pat = re.compile(r"\[" + re.escape(reply_tag) + r"\]((?:\s+\w+=\S+)+)")
             while time.time() < end:
-                buf += s.read(512)
-                for line in buf.decode("utf-8", "replace").splitlines():
+                buf += s.read(4096)
+                # Only complete lines: a long reply (the event log is up to ~26 KB of hex) arrives in pieces, and its
+                # tag shows up long before the end of the line
+                done, _, rest = buf.rpartition(b"\n")
+                for line in done.decode("utf-8", "replace").splitlines():
                     if m := pat.search(line):
                         return dict(kv.split("=", 1) for kv in m.group(1).split())
-                buf = buf[-8192:]  # a routine comes back as one line of up to ~3000 characters
+                buf = rest[-65536:]
         except serial.SerialException:
             return dict(PORT_LOST)
         finally:

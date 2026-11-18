@@ -221,13 +221,11 @@ Reply converse(uint32_t ip, uint16_t port, const int16_t* pcm, size_t samples, c
 	const int hn = snprintf(head, sizeof(head), "BBTALK 1 rate=%u fmt=ulaw bytes=%u voice=%s fw=%s conv=%d look=%d\n",
 	                        (unsigned) SendRate, (unsigned) ulaw.size(), voice, esp_app_get_description()->version,
 	                        Conversation::active() ? 1 : 0, canLook ? 1 : 0);
-	// WiFi and Bluetooth share one radio. For the upload WiFi gets priority and Bluetooth advertising pauses (it comes
-	// back right after; a connected controller isn't affected). Re-measured 2026-11-16 with "wifi bench", 24 KB, signal
-	// -42 dBm: advertising on 27.9 s with stalls up to 8.7 s (packets lost while it advertises every 20 ms, then TCP
-	// waits out its retry timer); advertising paused 2.6 s.
-	radioFor(2, true);
+	// WiFi and Bluetooth share one radio: for the whole WiFi session (HomeWiFi start to stop) WiFi has priority and
+	// Bluetooth advertising is paused. Measured 2026-11-16 with "wifi bench", 24 KB, signal -42 dBm: advertising on
+	// 27.9 s with stalls up to 8.7 s (packets lost while it advertises every 20 ms, then TCP waits out its retry timer);
+	// paused 2.6 s. Not switched here per upload: resuming and pausing it again a moment later raced and left it on.
 	const bool sent = sendAll(s, head, (size_t) hn) && sendAll(s, ulaw.data(), ulaw.size(), true);
-	radioFor(2, false);
 	if(!sent){
 		close(s);
 		r.error = "send_failed";
@@ -259,9 +257,7 @@ Reply converse(uint32_t ip, uint16_t port, const int16_t* pcm, size_t samples, c
 			const int ihn = photo.jpg != nullptr
 			                ? snprintf(ih, sizeof(ih), "BBIMG bytes=%u w=%u h=%u\n", (unsigned) photo.len, (unsigned) photo.w, (unsigned) photo.h)
 			                : snprintf(ih, sizeof(ih), "BBIMG bytes=0 why=%s\n", photo.why);
-			radioFor(2, true); // as for the voice upload: advertising paused
 			const bool ok = sendAll(s, ih, (size_t) ihn) && (photo.jpg == nullptr || sendAll(s, photo.jpg, photo.len));
-			radioFor(2, false);
 			free(photo.jpg);
 			shutdown(s, SHUT_WR);
 			if(!ok) r.error = "photo_send_failed";

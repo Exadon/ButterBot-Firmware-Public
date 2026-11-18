@@ -39,8 +39,9 @@ namespace {
 
 	struct Note {
 		float hz;
-		int ms;        // 0 Hz = silence
-		float level;   // 0..1 of full scale
+		int ms;            // 0 Hz = silence
+		float level;       // 0..1 of full scale
+		bool swell = false; // fade in and out over the whole note (a soft "breath") instead of 4 ms edges
 	};
 
 	/** The notes as PCM: a sine with a little second harmonic (a bit "robot"), 4 ms fades so nothing clicks. */
@@ -58,7 +59,8 @@ namespace {
 				if(n.hz > 0){
 					const float t = (float) i / Rate;
 					v = std::sin(2.0f * (float) M_PI * n.hz * t) * 0.8f + std::sin(4.0f * (float) M_PI * n.hz * t) * 0.2f;
-					const float env = std::min({ 1.0f, (float) i / (float) fade, (float) (len - i) / (float) fade });
+					const float env = n.swell ? std::sin((float) M_PI * (float) i / (float) len)
+					                          : std::min({ 1.0f, (float) i / (float) fade, (float) (len - i) / (float) fade });
 					v *= env * n.level * 32767.0f;
 				}
 				s[at++] = (int16_t) v;
@@ -78,9 +80,11 @@ void heard(Audio* audio){
 }
 
 void thinking(Audio* audio){
-	static bool high = false; // alternate two pitches: "working... working..."
+	// A soft low tone that swells in and out, every ~1.2 s (ListenState): a steady "breathing" pulse while it connects
+	// and thinks. Low and quiet so it doesn't nag; two pitches alternate so it feels alive rather than like an alarm.
+	static bool high = false;
 	high = !high;
-	play(audio, render({ { high ? 560.0f : 470.0f, 55, 0.14f } }));
+	play(audio, render({ { high ? 392.0f : 330.0f, 420, 0.10f, true } }));
 }
 
 }

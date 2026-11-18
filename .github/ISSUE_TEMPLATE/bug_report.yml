@@ -30,10 +30,10 @@ body:
     id: versions
     attributes:
       label: Versions
-      description: Flash tab → Status on each board, and Dimension Hopper's version (window title)
+      description: Not needed if you attach a problem report below (it has them). Otherwise Flash tab → Status on each board, and Dimension Hopper's version (window title)
       placeholder: "robot v1.1.1-exadon.2, controller v1.1-exadon.1, Dimension Hopper 1.2.0"
   - type: textarea
     id: log
     attributes:
-      label: Log (optional)
-      description: Console tab → Save log…, then drag the file here
+      label: Problem report (recommended)
+      description: In Dimension Hopper, plug in the robot (and controller), click **Problem report…** at the top, then drag the saved file here. It has the versions, status and the robot's recent events; names, WiFi details, addresses and what was said to the AI are left out. Or Console tab → Save log…

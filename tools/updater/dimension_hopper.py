@@ -36,7 +36,7 @@ from hopper_core import Kind
 import backup as backup_mod
 
 APP_TITLE = "Dimension Hopper"
-VERSION = "1.8.0"
+VERSION = "1.9.0"
 ROBOT_REPO = "Exadon/ButterBot-Firmware-Public"
 CTRL_REPO = "Exadon/ButterBotCtrl-Firmware-Public"
 
@@ -535,6 +535,8 @@ class App:
                                  font=("Segoe UI", 10, "italic"))
         self.headline.pack(anchor="w", pady=(6, 0))
         self.button(top, "About", self.show_about, small=True).pack(side="right", anchor="n", pady=(6, 0))
+        self.report_btn = self.button(top, "Problem report…", self.make_report, small=True)
+        self.report_btn.pack(side="right", anchor="n", pady=(6, 0), padx=(0, 6))
         self.compact = False
 
         # Boards: one place to pick (or scan for) the robot's and the controller's port; every tab uses these
@@ -830,6 +832,55 @@ class App:
         core.save_config(self.cfg)
 
     # --- about -----------------------------------------------------------------------------------------------
+    # --- problem report (report.py) ------------------------------------------------------------------------------
+    def make_report(self):
+        if getattr(self, "_reporting", False):
+            return
+        self._reporting = True
+        self.log("Making a problem report…", "hi")
+        bot, ctrl = self.board_vars[Kind.BOT].get(), self.board_vars[Kind.CTRL].get()
+        held = self.held_ports()
+        app_log = self.log_txt.get("1.0", "end")
+        cfg = dict(self.cfg)
+
+        def work():
+            import report
+            try:
+                text = report.build(VERSION, bot, ctrl, cfg, held, app_log, lambda s: self.tlog(s))
+            except Exception as e:  # noqa: BLE001 - shown to the user
+                text, err = "", e
+            else:
+                err = None
+            self.ui(lambda: self._save_report(text, err))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _save_report(self, text: str, err):
+        self._reporting = False
+        if err is not None:
+            self.info(f"Couldn't make the report: {err}", "Problem report")
+            return
+        from tkinter import filedialog
+        start = Path.home() / "Desktop"
+        path = filedialog.asksaveasfilename(
+            title="Save the problem report", defaultextension=".txt", initialdir=str(start if start.is_dir() else Path.home()),
+            initialfile=time.strftime("butterbot-report-%Y%m%d-%H%M.txt"), filetypes=[("Text", "*.txt")])
+        if not path:
+            self.log("Problem report not saved.")
+            return
+        try:
+            Path(path).write_text(text, encoding="utf-8")
+        except OSError as e:
+            self.info(f"Couldn't save it: {e}", "Problem report")
+            return
+        self.log(f"Problem report saved: {core.short_path(path)}", "ok")
+        core.open_path(path)  # opens it, so it can be read before sharing
+        if HopDialog(self.root, self.pal, self.button, "info", "Problem report",
+                     "Saved - it's open now, so you can read it before sharing. Names, WiFi details, addresses and "
+                     "what was said to the AI are left out.\n\nTo report a problem, attach the file to a new issue "
+                     "on GitHub (drag it into the Log box), or to your post.", [],
+                     buttons=("Close", "Open a bug report on GitHub"), default=0, cancel=0).run() == 1:
+            core.open_path(f"https://github.com/{ROBOT_REPO}/issues/new?template=bug_report.yml")
+
     def show_about(self):
         message = (f"Version {VERSION}\n\n"
                    "Made by Paul Binder.\n\n"
