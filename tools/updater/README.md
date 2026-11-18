@@ -107,7 +107,9 @@ Make the robot yours:
   with `|` and it picks one each time. The same card switches the beeps: a chirp when it has heard an AI question and a
   soft blip while it thinks.
 - **Controller** - the theme (Main, Rose, Red, Blue, or the fork's Portal, Butter, Ice, Mono and Purple; it switches
-  straight away), screen brightness and sleep time. Needs the controller plugged in by USB and this release's
+  straight away), screen brightness, sleep time and the **home screen**: the button hints, or a little animated
+  ButterBot (bobs, blinks, looks around, rolls to and fro, waves) for people who know the buttons. The home screen can
+  also be switched on the controller itself: Settings > HOME. Needs the controller plugged in by USB and this release's
   controller firmware.
 - **Your ramble lines** - up to 30 of your own lines, mixed into what the robot mutters when idle.
 - **Chat replies** - your own answer to any of the 48 chat voice lines; the controller shows it as a subtitle.

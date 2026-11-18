@@ -95,6 +95,9 @@ def collect(bot: str | None, ctrl: str | None, cfg: dict, app_version: str,
             s = ask(ctrl, "screen", "BBSCREEN")
             if s and "bright" in s:
                 c["bright"], c["sleep"] = int(s["bright"]), int(s["sleep"])
+            h = ask(ctrl, "home", "BBHOME")  # the home screen's hints / robot (controller firmware 1.1-exadon.5 on)
+            if h and "view" in h:
+                c["home"] = h["view"]
             out["controller"] = c
         else:
             notes.append(core.port_problem(t, ctrl) or "the controller didn't answer (is it on?) - its theme isn't in "
@@ -248,6 +251,8 @@ def restore(data: dict, bot: str | None, ctrl: str | None, cfg: dict,
         do(ctrl, f"theme {c['theme']}", "BBTHEME", "controller theme")
         if "bright" in c:
             do(ctrl, f"screen {c['bright']} {c['sleep']}", "BBSCREEN", "controller screen")
+        if c.get("home") in ("hints", "robot"):
+            do(ctrl, f"home {c['home']}", "BBHOME", "controller home screen")
         finished("controller", before)
     elif c:
         failed.append("controller (not connected)")

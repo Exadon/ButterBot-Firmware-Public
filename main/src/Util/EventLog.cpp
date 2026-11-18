@@ -10,11 +10,14 @@
 
 /*
  * How lines get here: the firmware is linked with --wrap=printf and --wrap=puts (main/CMakeLists.txt), so every call
- * to the C library's printf / puts goes through __wrap_printf / __wrap_puts below first. They copy a "[BB...]" line
- * into the ring, then print it as before. ESP-IDF's own errors and warnings come through its log hook. Storing only
- * ever takes a spinlock for a memcpy: these run in any task, sometimes with other locks held or in a critical section
- * (an earlier version wrapped the stdout stream itself, took a mutex there and crashed at start-up:
- * "assert failed: spinlock_acquire ... (lock->count == 0)").
+ * to the C library's printf / puts goes through __wrap_printf / __wrap_puts below first, and ESP-IDF's own log lines
+ * through its log hook. Two hard rules, both learnt the hard way:
+ *  - No locks but a spinlock, held only to reserve a slot: these run in any task, sometimes with other locks held
+ *    (wrapping the stdout stream and taking a mutex there crashed at start-up: "assert failed: spinlock_acquire").
+ *  - Nothing on the caller's stack: most of the robot's tasks have 4 KB stacks with little to spare, and a 160-byte
+ *    buffer plus a second formatting pass made simple voice commands crash (1.1.1-exadon.10). So whether a line is
+ *    kept is decided from the format text alone ("[BBWIFI] result=%s ..."), and a kept line is formatted straight
+ *    into its slot in the ring (PSRAM). Lines that aren't kept cost one string compare.
  */
 
 namespace EventLog {
@@ -37,8 +40,18 @@ namespace {
 	constexpr const char* KeepTags[] = { "[BBWIFI]", "[BBAI]", "[BBCONV]", "[BBMEM]", "[BBNVS]", "[BBCOM]", "[BBSR]",
 	                                     "[BBDANCE]", "[BBVOICECMD]", "[BBROUT]" };
 
+	/** Past ESP-IDF's colour code ("\033[0;31m"), if any. */
+	const char* skipColour(const char* s){
+		if(s[0] != '\033') return s;
+		const char* m = strchr(s, 'm');
+		return m != nullptr ? m + 1 : s;
+	}
+
+	/** Decided from the format text (or the finished line - the same tests work on both). */
 	bool keep(const char* s){
+		s = skipColour(s);
 		if((s[0] == 'E' || s[0] == 'W') && s[1] == ' ' && s[2] == '(') return true; // ESP-IDF error / warning
+		if(s[0] != '[' || s[1] != 'B' || s[2] != 'B') return false;
 		for(const char* tag : KeepTags){
 			const size_t tl = strlen(tag);
 			if(strncmp(s, tag, tl) != 0) continue;
@@ -67,38 +80,42 @@ namespace {
 		}
 	}
 
-	void record(const char* line){
-		if(ring == nullptr || line == nullptr) return;
-		// ESP-IDF colours its log lines: skip "\033[0;31m"
-		if(line[0] == '\033'){
-			const char* m = strchr(line, 'm');
-			if(m == nullptr) return;
-			line = m + 1;
-		}
-		if(!keep(line)) return;
-		// Written straight into its slot (no copy on the caller's stack, which may be small); only string work in here
+	/** Takes the next slot (the oldest line gives way) and blanks it; nullptr before install(). */
+	Entry* reserve(){
+		if(ring == nullptr) return nullptr;
 		portENTER_CRITICAL_SAFE(&mux);
-		Entry& e = ring[next];
-		e.upS = (uint32_t) (esp_timer_get_time() / 1000000);
-		strncpy(e.text, line, MaxLine - 1);
-		e.text[MaxLine - 1] = '\0';
-		for(size_t n = strlen(e.text); n > 0 && (e.text[n - 1] == '\n' || e.text[n - 1] == '\r'); --n) e.text[n - 1] = '\0';
-		for(char* p = e.text; (p = strstr(p, "\033[")) != nullptr;) *p = '\0'; // a trailing colour reset
-		blank(e.text);
-		if(e.text[0] != '\0'){
-			next = (next + 1) % MaxLines;
-			if(count < MaxLines) ++count;
-		}
+		Entry* e = &ring[next];
+		next = (next + 1) % MaxLines;
+		if(count < MaxLines) ++count;
+		e->text[0] = '\0';
+		e->upS = (uint32_t) (esp_timer_get_time() / 1000000);
 		portEXIT_CRITICAL_SAFE(&mux);
+		return e;
+	}
+
+	/** Tidies a line written into its slot: colour codes and line ends off, addresses blanked. */
+	void finish(Entry* e){
+		char* t = e->text;
+		const char* start = skipColour(t);
+		if(start != t) memmove(t, start, strlen(start) + 1);
+		for(char* p = t; (p = strstr(p, "\033[")) != nullptr;) *p = '\0';
+		for(size_t n = strlen(t); n > 0 && (t[n - 1] == '\n' || t[n - 1] == '\r'); --n) t[n - 1] = '\0';
+		blank(t);
+	}
+
+	void recordFormat(const char* fmt, va_list ap){
+		if(fmt == nullptr || !keep(fmt)) return;
+		Entry* e = reserve();
+		if(e == nullptr) return;
+		va_list copy;
+		va_copy(copy, ap);
+		vsnprintf(e->text, MaxLine, fmt, copy);
+		va_end(copy);
+		finish(e);
 	}
 
 	int logHook(const char* fmt, va_list ap){
-		va_list copy;
-		va_copy(copy, ap);
-		char buf[MaxLine];
-		vsnprintf(buf, sizeof(buf), fmt, copy);
-		va_end(copy);
-		record(buf);
+		recordFormat(fmt, ap);
 		return prevLog != nullptr ? prevLog(fmt, ap) : vprintf(fmt, ap);
 	}
 }
@@ -121,6 +138,7 @@ std::string dump(){
 	portEXIT_CRITICAL_SAFE(&mux);
 	for(size_t i = 0; i < n; ++i){
 		const Entry& e = copy[(first + i) % MaxLines];
+		if(e.text[0] == '\0') continue;
 		char head[16];
 		snprintf(head, sizeof(head), "%lu ", (unsigned long) e.upS);
 		out += head;
@@ -144,20 +162,19 @@ extern "C" int __real_puts(const char* s);
 extern "C" int __wrap_printf(const char* fmt, ...){
 	va_list ap;
 	va_start(ap, fmt);
-	if(fmt != nullptr && fmt[0] == '[' && fmt[1] == 'B' && fmt[2] == 'B'){ // only the robot's own status lines
-		va_list copy;
-		va_copy(copy, ap);
-		char buf[160];
-		vsnprintf(buf, sizeof(buf), fmt, copy);
-		va_end(copy);
-		EventLog::record(buf);
-	}
+	EventLog::recordFormat(fmt, ap);
 	const int r = vprintf(fmt, ap);
 	va_end(ap);
 	return r;
 }
 
 extern "C" int __wrap_puts(const char* s){
-	if(s != nullptr && s[0] == '[' && s[1] == 'B' && s[2] == 'B') EventLog::record(s);
+	if(s != nullptr && EventLog::keep(s)){
+		if(EventLog::Entry* e = EventLog::reserve()){
+			strncpy(e->text, s, EventLog::MaxLine - 1);
+			e->text[EventLog::MaxLine - 1] = '\0';
+			EventLog::finish(e);
+		}
+	}
 	return __real_puts(s);
 }

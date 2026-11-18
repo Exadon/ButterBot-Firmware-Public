@@ -36,7 +36,7 @@ from hopper_core import Kind
 import backup as backup_mod
 
 APP_TITLE = "Dimension Hopper"
-VERSION = "1.9.0"
+VERSION = "1.10.0"
 ROBOT_REPO = "Exadon/ButterBot-Firmware-Public"
 CTRL_REPO = "Exadon/ButterBotCtrl-Firmware-Public"
 

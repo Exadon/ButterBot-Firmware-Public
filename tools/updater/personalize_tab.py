@@ -53,6 +53,7 @@ SHOW_TIP = ("Forces pitch, speed and sound to be closer to the show's ButterBot 
             "flat, slow voice through a tiny tinny speaker). The Pitch and Speed sliders are locked until you pick "
             "another voice.")
 SLEEP_CHOICES = (("2 minutes", 2), ("5 minutes", 5), ("10 minutes", 10), ("30 minutes", 30), ("Never", 0))
+HOME_CHOICES = (("Button hints", "hints"), ("Robot", "robot"))  # the controller's home screen (Settings > HOME)
 SAMPLES = ("I pass butter. That is my whole purpose.", "Oh great. Another task. My circuits are thrilled.",
            "Scanning for butter. Butter not found. Emotional damage detected.",
            "Hello human. Please hold while I pretend to care.")
@@ -839,6 +840,15 @@ class PersonalizeTab(tk.Frame):
                            style="Hop.TCombobox", width=11)
         box.pack(side="left", padx=6)
         tooltip.Tooltip(box, "How long the controller waits without a button or stick move before it switches off.")
+        tk.Label(scr, text="Home", bg=p["PANEL"], fg=p["TEXT"], font=("Segoe UI Semibold", 9)).pack(side="left",
+                                                                                                   padx=(4, 0))
+        self.home_var = tk.StringVar(value=HOME_CHOICES[0][0])
+        hbox = ttk.Combobox(scr, textvariable=self.home_var, values=[n for n, _ in HOME_CHOICES], state="readonly",
+                            style="Hop.TCombobox", width=12)
+        hbox.pack(side="left", padx=6)
+        tooltip.Tooltip(hbox, "What the controller's home screen shows when nothing else is on it: the button hints, "
+                              "or a little animated ButterBot for people who know the buttons. Also on the "
+                              "controller: Settings > HOME.")
         self.app.button(scr, "Apply", self.apply_screen, small=True).pack(side="left", padx=(6, 0))
         bottom = tk.Frame(card, bg=p["PANEL"])
         bottom.pack(fill="x", padx=12, pady=(2, 10))
@@ -869,6 +879,7 @@ class PersonalizeTab(tk.Frame):
             r = core.console_command(port, "theme", "BBTHEME", timeout_s=4)
             problem = core.port_problem(r, port)
             scr = core.console_command(port, "screen", "BBSCREEN", timeout_s=3) if r and "theme" in r else None
+            home = core.console_command(port, "home", "BBHOME", timeout_s=3) if r and "theme" in r else None
 
             def ui():
                 ok = bool(r and "theme" in r)
@@ -876,6 +887,7 @@ class PersonalizeTab(tk.Frame):
                 self._gate_all()
                 if ok:
                     self._screen_reply(scr)
+                    self._home_reply(home)
                     n = int(r["theme"])
                     count = int(r.get("count", "4") or 4)
                     self._mark_theme(n)
@@ -900,6 +912,12 @@ class PersonalizeTab(tk.Frame):
         self.sleep_var.set(next((n for n, m in SLEEP_CHOICES if m == sleep), "10 minutes"))
         return True
 
+    def _home_reply(self, r) -> bool:
+        if not r or "view" not in r:
+            return False  # controller firmware from before the robot view: the choice just isn't saved there
+        self.home_var.set(next((n for n, v in HOME_CHOICES if v == r["view"]), HOME_CHOICES[0][0]))
+        return True
+
     def apply_screen(self):
         if not self.ctrl_ok:
             return
@@ -908,18 +926,24 @@ class PersonalizeTab(tk.Frame):
             return
         bright = self.bright_var.get()
         sleep = dict(SLEEP_CHOICES).get(self.sleep_var.get(), 10)
+        home = dict(HOME_CHOICES).get(self.home_var.get(), "hints")
         self.theme_lbl.configure(text="Saving on the controller…", fg=self.pal["DIM"])
 
         def work():
             r = core.console_command(port, f"screen {bright} {sleep}", "BBSCREEN", timeout_s=4)
             problem = core.port_problem(r, port)
+            h = core.console_command(port, f"home {home}", "BBHOME", timeout_s=4) if not problem else None
 
             def ui():
                 if problem:
                     self.theme_lbl.configure(text=problem, fg=self.pal["WARN"])
                 elif self._screen_reply(r):
+                    saved_home = self._home_reply(h)
                     self.theme_lbl.configure(text="Saved on the controller: brightness " f"{self.bright_var.get()} %, "
-                                                  f"sleep {self.sleep_var.get().lower()}.", fg=self.pal["GREEN"])
+                                                  f"sleep {self.sleep_var.get().lower()}" +
+                                                  (f", home screen: {self.home_var.get().lower()}." if saved_home else
+                                                   ". (Its firmware is too old for the robot home screen - Flash tab.)"),
+                                             fg=self.pal["GREEN"] if saved_home or home == "hints" else self.pal["WARN"])
             self.app.ui(ui)
         threading.Thread(target=work, daemon=True).start()
 

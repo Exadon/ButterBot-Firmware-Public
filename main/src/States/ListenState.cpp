@@ -361,11 +361,14 @@ ListenState::ListenState(BBStateMachine* sm) : State(sm){
             const size_t freeRam = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
             const size_t block = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
             const bool followUp = Conversation::active() && Conversation::turns.load() > 0;
-            ai->wifiAfterRecording = followUp || freeRam < OverlapMinFree || block < OverlapMinBlock;
-            if(ai->wifiAfterRecording){
-                printf("[BBAI] event=wifi_after_recording free=%u block=%u conv=%d\n", (unsigned) (freeRam / 1024),
-                       (unsigned) (block / 1024), followUp ? 1 : 0);
-            }
+            // Always after the recording now: starting WiFi while the listening engine loads crashed the robot.
+            // Right after switching on there's room by the numbers (64 KB free), so WiFi used to start in parallel -
+            // but the first WiFi start after boot also keeps ~6 KB for good, and with the engine's ~17 KB loading at
+            // the same moment esp_wifi_init found only 12 KB and aborted (1.1.1-exadon.10, the first command or two
+            // after switching on). It costs about a second on that first answer; later ones already worked this way.
+            ai->wifiAfterRecording = true;
+            printf("[BBAI] event=wifi_after_recording free=%u block=%u conv=%d\n", (unsigned) (freeRam / 1024),
+                   (unsigned) (block / 1024), followUp ? 1 : 0);
             strncpy(ai->voice, Voice::current().name, sizeof(ai->voice) - 1);
             aiWorkerRunning = true;
             auto* holder = new std::shared_ptr<AiSession>(ai);
