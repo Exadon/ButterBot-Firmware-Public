@@ -1,0 +1,44 @@
+# Builds the Mac Dimension Hopper on pull requests that change it, so a change can be checked without a Mac: the app
+# must build, pass its --selftest and open its window. The self-test report and a screenshot of the window are kept
+# as the "DimensionHopper-mac-check" artifact (and the app itself as "DimensionHopper-mac.zip"). Nothing is attached
+# to a release - firmware.yml does that for tags.
+name: Dimension Hopper (Mac check)
+
+on:
+  pull_request:
+    paths:
+      - "tools/updater/**"
+      - ".github/workflows/hopper-mac-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hopper-mac-check:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Build DimensionHopper.app
+        run: bash tools/updater/build_mac.sh
+
+      - name: Self-test and screenshot
+        run: bash tools/updater/check_mac.sh "$RUNNER_TEMP/check"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: DimensionHopper-mac-check
+          path: ${{ runner.temp }}/check
+          if-no-files-found: warn
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DimensionHopper-mac.zip
+          path: tools/updater/dist/DimensionHopper-mac.zip
+          if-no-files-found: error

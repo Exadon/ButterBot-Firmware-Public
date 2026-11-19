@@ -190,7 +190,7 @@ Four steps, each with a lamp (NOT SET UP / TO DO / WORKING… / READY / PROBLEM)
 
 1. **Robot WiFi** - **Scan** lists the networks the robot can see (2.4 GHz only), pick yours, type the password,
    **Send to robot**, then **Test robot WiFi**. Tick *remember on this PC* to keep the password in Windows Credential
-   Manager. This PC's address is given to the robot so it finds the brain even when the robot and the PC are on
+   Manager (the Keychain on a Mac). This PC's address is given to the robot so it finds the brain even when the robot and the PC are on
    different sub-networks (common with mesh WiFi); it stays hidden on screen unless you tick *show addresses*.
 2. **Hearing** - loads [Whisper](https://github.com/SYSTRAN/faster-whisper) on this PC (base.en, about 140 MB,
    downloaded once from Hugging Face - **Source…** can point it at a mirror or a folder instead).
@@ -224,11 +224,12 @@ from scratch takes longer than the robot waits for an answer. Photos are 128x128
 is short while WiFi is on).
 
 The **Conversations** table shows what you said, ButterBot's answer, the action, and how long the upload, hearing and
-thinking took. Every conversation is also logged to `%LOCALAPPDATA%\DimensionHopper\brain_log.jsonl`.
+thinking took. Every conversation is also logged to `%LOCALAPPDATA%\DimensionHopper\brain_log.jsonl`
+(on a Mac: `~/Library/Application Support/DimensionHopper/brain_log.jsonl`).
 
 Privacy: your voice goes from the robot to this PC over your own network and is turned into text here; with Ollama the
 AI runs here too. Nothing is sent to the internet. The WiFi password goes to the robot over USB and, if you choose,
-into Windows Credential Manager - never into a plain file.
+into Windows Credential Manager or the macOS Keychain - never into a plain file.
 
 ## Troubleshooting
 
@@ -275,6 +276,11 @@ bash build_mac.sh
 This produces `dist/DimensionHopper.app` and `dist/DimensionHopper-mac.zip` (about 95 MB) for the Mac's own
 processor, ad-hoc signed. CI builds it on Apple silicon and attaches the zip to each release.
 
+`bash check_mac.sh` then checks the built app with no boards plugged in: it runs `--selftest` (fails if anything is
+MISSING) and saves a `--screenshot` of the window, both into `dist/check`. CI runs the same check on every pull
+request that touches `tools/updater/` (`.github/workflows/hopper-mac-check.yml`) and keeps the report and screenshot
+as the `DimensionHopper-mac-check` artifact, so a change can be checked without a Mac.
+
 ## Run from source
 
 ```powershell
@@ -285,8 +291,8 @@ py -3 -m venv .venv; .\.venv\Scripts\pip install -r requirements.txt
 On a Mac (Python 3.13 from python.org, which brings Tk):
 
 ```bash
-python3.13 -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python dimension_hopper.py
+python3.13 -m venv .venv.nosync && .venv.nosync/bin/pip install -r requirements.txt
+.venv.nosync/bin/python dimension_hopper.py
 ```
 
 Dev flags: `--selftest <out.txt>` checks the bundled esptool, stubs and AI libraries (handy for the windowed exe).
@@ -311,4 +317,5 @@ Dev flags: `--selftest <out.txt>` checks the bundled esptool, stubs and AI libra
 | `mac_compat.py` | Makes the Windows-designed UI look the same on a Mac (fonts, sizes, coloured buttons). |
 | `build_exe.ps1` | Reproducible PyInstaller build (Windows). |
 | `build_mac.sh` | The same for the Mac app. |
+| `check_mac.sh` | Self-test and screenshot of the built Mac app (CI runs it on pull requests). |
 | `make_art.py` | Regenerates the art: `portal.ico`/`portal.png` (app icon), `bot.png` and `controller.png` (slot icons). |

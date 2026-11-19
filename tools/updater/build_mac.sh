@@ -5,14 +5,18 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-if [ ! -d .venv ]; then
+# The build's Python environment. ".nosync": iCloud Drive (which syncs ~/Documents) leaves this folder alone - inside
+# a synced folder it scatters "file 2.py" copies through the packages, and PyInstaller then analyses thousands of
+# extra modules (a 3-minute build turns into hours)
+VENV=.venv.nosync
+if [ ! -d "$VENV" ]; then
     # CI (actions/setup-python) says which Python to use; locally, 3.13 like the Windows build (the speech-to-text
     # packages publish wheels up to it)
-    if [ -n "${pythonLocation:-}" ]; then "$pythonLocation/bin/python3" -m venv .venv
-    elif command -v python3.13 >/dev/null; then python3.13 -m venv .venv
-    else python3 -m venv .venv; fi
+    if [ -n "${pythonLocation:-}" ]; then "$pythonLocation/bin/python3" -m venv "$VENV"
+    elif command -v python3.13 >/dev/null; then python3.13 -m venv "$VENV"
+    else python3 -m venv "$VENV"; fi
 fi
-PY=.venv/bin/python
+PY="$VENV/bin/python"
 echo "Python: $($PY --version 2>&1) ($(uname -m))"
 if pgrep -fq "DimensionHopper.app/Contents/MacOS/DimensionHopper"; then
     echo "Dimension Hopper is running - quit it first." >&2; exit 1
@@ -28,7 +32,7 @@ WORK=$(mktemp -d "${TMPDIR:-/tmp}/dimensionhopper.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT
 # --onedir: macOS wants a real .app folder (PyInstaller is dropping one-file .app bundles). The PNG icon is turned
 # into the .icns a Mac app needs (PyInstaller does that with Pillow).
-.venv/bin/pyinstaller --noconfirm --clean --onedir --windowed --distpath "$WORK/dist" --workpath "$WORK/build" \
+"$VENV/bin/pyinstaller" --noconfirm --clean --onedir --windowed --distpath "$WORK/dist" --workpath "$WORK/build" \
     --name DimensionHopper --icon portal.png --osx-bundle-identifier io.github.exadon.dimensionhopper \
     --add-data "portal.png:." --add-data "bot.png:." --add-data "controller.png:." \
     --add-data "bot_guide.png:." --add-data "controller_guide.png:." --add-data "guide_data.json:." \

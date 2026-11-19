@@ -1812,6 +1812,12 @@ def _selftest(out: str):
 
 
 def main():
+    # Libraries the AI tab loads (Whisper's downloader, tqdm) use multiprocessing locks, and on a Mac those start
+    # Python's resource tracker as "this program -c from multiprocessing.resource_tracker import ...". In the
+    # packaged app this program is Dimension Hopper itself: without freeze_support() each tracker opened another
+    # hidden Dimension Hopper (running the AI brain too), which started another tracker, and so on.
+    import multiprocessing
+    multiprocessing.freeze_support()
     if "--flash-worker" in sys.argv:  # a flash running in its own process (Update both flashes both at once)
         core.worker_main(sys.argv[sys.argv.index("--flash-worker") + 1])
         return
@@ -1832,6 +1838,10 @@ def main():
 
     if "--screenshot" in sys.argv:  # dev aid: render, grab the window, exit
         out = sys.argv[sys.argv.index("--screenshot") + 1]
+        # in front of every other window (an app started from a script doesn't come to the front on a Mac), or the
+        # screen grab shows whatever covers it
+        root.attributes("-topmost", True)
+        root.lift()
 
         def grab():
             from PIL import ImageGrab

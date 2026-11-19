@@ -257,21 +257,34 @@ class EsptoolError(RuntimeError):
 
 
 def run_esptool(args: list[str], on_line: Callable[[str], None] = lambda s: None,
-                on_progress: Callable[[int], None] = lambda p: None) -> str:
+                on_progress: Callable[[int], None] = lambda p: None,
+                file_sizes: Optional[list[int]] = None) -> str:
     """
     Runs esptool in-process (works inside a --windowed PyInstaller exe, where a child process
     would have no stdout). Serialized: esptool keeps global state and we redirect sys.stdout.
     Returns the full output; raises EsptoolError on failure.
+    file_sizes: the sizes of the files a write_flash writes, in order. esptool counts 0-100 % for each file,
+    so without them the progress bar starts again for every file; with them it reports one overall percentage.
     """
     import esptool
 
     out: list[str] = []
+    sizes = [max(1, n) for n in file_sizes or []]
+    total = sum(sizes)
+    current = 0  # index of the file being written
 
     def line(s: str):
+        nonlocal current
         out.append(s)
         m = _PCT.search(s)
         if m:
-            on_progress(min(100, int(m.group(1))))
+            p = min(100, int(m.group(1)))
+            if sizes:
+                i = min(current, len(sizes) - 1)
+                p = (sum(sizes[:i]) + sizes[i] * p // 100) * 100 // total
+            on_progress(p)
+        if sizes and s.startswith("Wrote "):  # one file done ("Wrote 8650752 bytes (... compressed) at 0x...")
+            current += 1
         on_line(s)
 
     sink = _LineSink(line)
@@ -717,7 +730,7 @@ def write(port: str, plan: FlashPlan, baud: int, on_line, on_progress):
     for off, p in plan.parts:
         args += [hex(off), str(p)]
     # esptool verifies each region's MD5 after writing ("Hash of data verified")
-    run_esptool(args, on_line, on_progress)
+    run_esptool(args, on_line, on_progress, file_sizes=[Path(p).stat().st_size for _, p in plan.parts])
 
 
 # ---------------------------------------------------------------------------------------------
@@ -874,7 +887,7 @@ def smart_write(port: str, plan: FlashPlan, baud: int, flash_bytes: int, keep_pa
             f = Path(tmp) / f"run{i}.bin"
             f.write_bytes(data)
             args += [hex(addr), str(f)]
-        run_esptool(args, on_line, lambda p: on_progress(20 + p * 80 // 100))
+        run_esptool(args, on_line, lambda p: on_progress(20 + p * 80 // 100), file_sizes=[len(d) for _, d in runs])
     return stats
 
 
