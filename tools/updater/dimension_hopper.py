@@ -36,7 +36,7 @@ from hopper_core import Kind
 import backup as backup_mod
 
 APP_TITLE = "Dimension Hopper"
-VERSION = "1.10.1"
+VERSION = "1.11.0"
 ROBOT_REPO = "Exadon/ButterBot-Firmware-Public"
 CTRL_REPO = "Exadon/ButterBotCtrl-Firmware-Public"
 
@@ -179,14 +179,15 @@ class DeviceSlot(tk.Frame):
         pad = dict(padx=14)
         head = tk.Frame(self, bg=PANEL)
         head.pack(fill="x", pady=(10, 4), **pad)
-        self.icon_img = load_art("bot.png" if kind == Kind.BOT else "controller.png", 84)
+        self.icon_img = load_art({Kind.BOT: "bot.png", Kind.CTRL: "controller.png"}.get(kind, "clockstar.png"), 84)
         if self.icon_img is not None:
             tk.Label(head, image=self.icon_img, bg=PANEL).pack(side="left", padx=(0, 10))
         names = tk.Frame(head, bg=PANEL)
         names.pack(side="left", anchor="center")
         tk.Label(names, text=Kind.LABEL[kind].upper(), bg=PANEL, fg=GREEN,
                  font=("Segoe UI Black", 15)).pack(anchor="w")
-        tk.Label(names, text="16 MB · robot" if kind == Kind.BOT else "4 MB · handheld", bg=PANEL, fg=DIM,
+        tk.Label(names, text={Kind.BOT: "16 MB · robot", Kind.CTRL: "4 MB · handheld"}.get(kind, "4 MB · watch"),
+                 bg=PANEL, fg=DIM,
                  font=("Segoe UI", 9)).pack(anchor="w")
 
         # port row
@@ -197,14 +198,17 @@ class DeviceSlot(tk.Frame):
         self.port_box = ttk.Combobox(row, textvariable=self.port_var, state="readonly", style="Hop.TCombobox")
         self.port_box.pack(side="left", fill="x", expand=True)
         self.port_box.bind("<<ComboboxSelected>>", lambda e: self._port_changed())
-        self.probe_btn = app.button(row, "Probe", lambda: app.run_probe(self), small=True)
-        self.probe_btn.pack(side="left", padx=(6, 0))
-        self.status_btn = app.button(row, "Status", lambda: app.run_status(self), small=True)
-        self.status_btn.pack(side="left", padx=(6, 0))
-        self.wake_btn = app.button(row, "Wake", lambda: app.run_wake(self), small=True)
-        self.wake_btn.pack(side="left", padx=(6, 0))
-        self.forget_btn = app.button(row, "Forget pairing", lambda: app.run_forget(self), small=True)
-        self.forget_btn.pack(side="left", padx=(6, 0))
+        # The board buttons sit on their own line under the port, so three slots fit side by side
+        btns = tk.Frame(self, bg=PANEL)
+        btns.pack(fill="x", pady=(0, 2), padx=(14 + 56, 14))
+        self.probe_btn = app.button(btns, "Probe", lambda: app.run_probe(self), small=True)
+        self.probe_btn.pack(side="left")
+        self.status_btn = app.button(btns, "Status", lambda: app.run_status(self), small=True)
+        self.wake_btn = app.button(btns, "Wake", lambda: app.run_wake(self), small=True)
+        self.forget_btn = app.button(btns, "Forget pairing", lambda: app.run_forget(self), small=True)
+        # Status and Forget pairing talk to the fork's console, which the Clockstar's firmware doesn't have
+        for b in ((self.status_btn, self.wake_btn, self.forget_btn) if kind != Kind.CLOCK else (self.wake_btn,)):
+            b.pack(side="left", padx=(6, 0))
         self.parked_lbl = tk.Label(self, text="⏸ PARKED IN BOOTLOADER - not running, can't pair. Beam or hit Wake.",
                                    bg=PANEL, fg=WARN, anchor="w", font=("Segoe UI Semibold", 8))
 
@@ -236,7 +240,7 @@ class DeviceSlot(tk.Frame):
         self.repo_row = tk.Frame(self, bg=PANEL)
         self.repo_lbl = tk.Label(self.repo_row, text="Repo", bg=PANEL, fg=DIM, width=7, anchor="w")
         self.repo_lbl.pack(side="left")
-        self.repo_var = tk.StringVar(value=app.cfg["bot_repo" if kind == Kind.BOT else "ctrl_repo"])
+        self.repo_var = tk.StringVar(value=app.cfg.get(Kind.REPO_KEY[kind], core.PRESET_REPOS[kind][0]))
         # A dropdown, not free text: stock + fork presets, plus whatever was added under "Repos…".
         # The badge next to it makes "am I flashing stock or my fork?" impossible to miss.
         self.repo_box = ttk.Combobox(self.repo_row, textvariable=self.repo_var, state="readonly",
@@ -266,6 +270,14 @@ class DeviceSlot(tk.Frame):
         self.status.pack(fill="x", **pad)
         self.go_btn.pack(fill="x", pady=(10, 14), **pad)
         self._last_repo = self.repo_var.get()
+        # The texts wrap to the slot's width (three slots side by side are narrower than two)
+        self.bind("<Configure>", self._rewrap, add="+")
+
+    def _rewrap(self, e):
+        width = max(160, e.width - 32)
+        for lbl in (self.chip_lbl, self.health_lbl, self.release_lbl, self.payload_lbl, self.status):
+            if lbl.cget("wraplength") != width:
+                lbl.configure(wraplength=width)
 
     # --- source handling ------------------------------------------------------------------
     def _source_changed(self):
@@ -406,7 +418,7 @@ class DeviceSlot(tk.Frame):
         if only_if_changed and repo == self._last_repo and self.release:
             return
         self._last_repo = repo
-        self.app.cfg["bot_repo" if self.kind == Kind.BOT else "ctrl_repo"] = repo
+        self.app.cfg[Kind.REPO_KEY[self.kind]] = repo
         core.save_config(self.app.cfg)
         self.release = None
         self.payload_lbl.configure(text=f"Checking {repo} for the latest release…", fg=DIM)
@@ -607,18 +619,24 @@ class App:
         # devices
         mid = tk.Frame(flash, bg=BG)
         mid.pack(fill="x", padx=18, pady=6)
+        self.flash_mid = mid
         mid.columnconfigure(0, weight=1, uniform="slot")
         mid.columnconfigure(1, weight=1, uniform="slot")
-        self.slots = {Kind.BOT: DeviceSlot(self, mid, Kind.BOT), Kind.CTRL: DeviceSlot(self, mid, Kind.CTRL)}
+        self.slots = {Kind.BOT: DeviceSlot(self, mid, Kind.BOT), Kind.CTRL: DeviceSlot(self, mid, Kind.CTRL),
+                      Kind.CLOCK: DeviceSlot(self, mid, Kind.CLOCK)}
         self.slots[Kind.BOT].grid(row=0, column=0, sticky="nsew", padx=(0, 8))
         self.slots[Kind.CTRL].grid(row=0, column=1, sticky="nsew", padx=(8, 0))
+        # The Clockstar watch: most people don't have one, so its slot only appears once a scan finds one
+        if self.cfg.get("clockstar_seen"):
+            self.show_clock_slot()
 
         # action bar
         bar = tk.Frame(flash, bg=BG)
         bar.pack(fill="x", padx=18, pady=(8, 4))
         self.scan_btn = self.button(bar, "⟳  Scan dimensions", self.run_scan)
         self.scan_btn.pack(side="left")
-        self.both_btn = self.button(bar, "Update both  ▶▶", lambda: self.run_update(list(self.slots.values())))
+        self.both_btn = self.button(bar, "Update both  ▶▶",
+                                    lambda: self.run_update([self.slots[Kind.BOT], self.slots[Kind.CTRL]]))
         self.both_btn.pack(side="left", padx=8)
         self.backup_var = tk.BooleanVar(value=bool(self.cfg.get("backup_first", True)))
         tk.Checkbutton(bar, text="Back up current firmware first", variable=self.backup_var,
@@ -1170,10 +1188,25 @@ class App:
         for lbl in self.scan_labels:
             lbl.configure(text=text, fg=color)
 
+    def show_clock_slot(self):
+        """Shows the Clockstar's slot under the robot's and the controller's (and remembers that there is one)."""
+        slot = self.slots[Kind.CLOCK]
+        if slot.winfo_manager():
+            return
+        # A third column next to the others: the tab stays as tall as it was
+        self.flash_mid.columnconfigure(2, weight=1, uniform="slot")
+        self.slots[Kind.CTRL].grid_configure(padx=8)
+        slot.grid(row=0, column=2, sticky="nsew", padx=(8, 0))
+        if not self.cfg.get("clockstar_seen"):
+            self.cfg["clockstar_seen"] = True
+            core.save_config(self.cfg)
+
     def port_found(self, kind: str, device: str):
         """A board was identified on a port: every dropdown for that board switches to it."""
         if kind not in self.slots or not device:
             return
+        if kind == Kind.CLOCK:
+            self.show_clock_slot()
         self.known_ports[kind] = device
         if kind in self.board_vars:
             self.board_vars[kind].set(device)
@@ -1495,8 +1528,9 @@ class App:
             return f
 
         try:
-            # 0. save what the owner set up on it, while it still runs its firmware (the probe below stops it)
-            pre = self._settings_before_flash(s, port, status)
+            # 0. save what the owner set up on it, while it still runs its firmware (the probe below stops it).
+            # The Clockstar keeps its settings (phone pairing, watch face) in its own storage, kept by the flash.
+            pre = None if s.kind == Kind.CLOCK else self._settings_before_flash(s, port, status)
 
             # 1. identify the board (always re-probe: ports get renumbered, cables get swapped)
             status(quip("probe"), pct=0)
@@ -1549,8 +1583,8 @@ class App:
             self.ui(lambda: self._set_parked(port, False))  # the write ends with a hard reset
 
             # 5. wait for it to run the new firmware, and check it's the version we wrote
-            stock = s.src_var.get() == "release" and s._is_stock()
-            if stock:  # stock firmware prints no status line, so there's nothing to confirm with
+            stock = s.kind == Kind.CLOCK or (s.src_var.get() == "release" and s._is_stock())
+            if stock:  # stock firmware (and the watch's) prints no status line, so there's nothing to confirm with
                 status("Landed and verified. " + ("Press the power button to turn it on." if s.kind == Kind.BOT
                                                   else "It's rebooting."), GREEN, 100)
                 self.tlog(f"[{name}] done ✔", "hi")
@@ -1694,7 +1728,7 @@ class App:
                 if repo.lower() in (r.lower() for r in core.repo_choices(self.cfg, kind)):
                     msg.configure(text=f"{repo} is already in the list.", fg=WARN)
                     return
-                self.cfg["custom_repos"][kind].append(repo)
+                self.cfg["custom_repos"].setdefault(kind, []).append(repo)
                 core.save_config(self.cfg)
                 var.set("")
                 msg.configure(text=f"Added {repo} - pick it from the {Kind.LABEL[kind]} dropdown.", fg=GREEN)
@@ -1727,6 +1761,8 @@ class App:
 
         section(Kind.BOT)
         section(Kind.CTRL)
+        if self.slots[Kind.CLOCK].winfo_manager():
+            section(Kind.CLOCK)
         self.button(dlg, "Done", dlg.destroy).pack(anchor="e", padx=16, pady=(6, 14))
         dlg.grab_set()
 

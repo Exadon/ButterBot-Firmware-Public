@@ -125,13 +125,15 @@ def short_path(path) -> str:
 PRESET_REPOS = {
     "bot": ["Exadon/ButterBot-Firmware-Public", "CircuitMess/ButterBot-Firmware-Public"],
     "ctrl": ["Exadon/ButterBotCtrl-Firmware-Public", "CircuitMess/ButterBotCtrl-Firmware-Public"],
+    "clock": ["CircuitMess/Clockstar-v2-Firmware"],
 }
 STOCK_OWNER = "CircuitMess"
 
 DEFAULT_CONFIG = {
     "bot_repo": "Exadon/ButterBot-Firmware-Public",       # the fork by default (STOCK is one click away)
     "ctrl_repo": "Exadon/ButterBotCtrl-Firmware-Public",
-    "custom_repos": {"bot": [], "ctrl": []},
+    "clock_repo": "CircuitMess/Clockstar-v2-Firmware",
+    "custom_repos": {"bot": [], "ctrl": [], "clock": []},
     "backup_first": True,
     "baud": 921600,
 }
@@ -165,9 +167,11 @@ def repo_choices(cfg: dict, kind: str) -> list[str]:
 class Kind:
     BOT = "bot"
     CTRL = "ctrl"
+    CLOCK = "clock"   # CircuitMess Clockstar v2 watch (ESP32-S3 on its own USB)
 
-    LABEL = {BOT: "ButterBot", CTRL: "Controller"}
-    FLASH = {BOT: 16 * MiB, CTRL: 4 * MiB}
+    LABEL = {BOT: "ButterBot", CTRL: "Controller", CLOCK: "Clockstar"}
+    FLASH = {BOT: 16 * MiB, CTRL: 4 * MiB, CLOCK: 4 * MiB}
+    REPO_KEY = {BOT: "bot_repo", CTRL: "ctrl_repo", CLOCK: "clock_repo"}
 
 
 @dataclass
@@ -190,13 +194,16 @@ class ProbeResult:
     mac: str = ""
     error: str = ""
     parked: bool = False  # left in the ROM bootloader: not running firmware until woken or flashed
+    native_usb: bool = False  # on the chip's own USB (Espressif VID), not a USB-serial bridge like the CH340
 
     @property
     def kind(self) -> Optional[str]:
         if self.flash_bytes >= 16 * MiB:
             return Kind.BOT
+        # The controller and the Clockstar both have 4 MB; the controller talks through a CH340, the watch
+        # through the ESP32-S3's own USB
         if 0 < self.flash_bytes <= 4 * MiB:
-            return Kind.CTRL
+            return Kind.CLOCK if self.native_usb else Kind.CTRL
         return None
 
 
@@ -352,11 +359,12 @@ def probe(port: str, baud: int = 921600, on_line=lambda s: None) -> ProbeResult:
     if not res.flash_bytes:
         res.error = "Chip answered but did not report a flash size"
         return res
+    res.native_usb = any(p.device == port and p.vid == ESPRESSIF_VID for p in serial.tools.list_ports.comports())
     res.parked = True
     # The controller keeps its USB power through a reboot, so don't leave it stuck in the bootloader: a
     # parked chip runs no firmware - no screen, no BLE, no pairing - until it's power-cycled. Flashing
     # later resets it back into the bootloader by itself.
-    if res.kind == Kind.CTRL:
+    if res.kind in (Kind.CTRL, Kind.CLOCK):  # the watch has its own battery: same as the controller
         try:
             wake(port)
             res.parked = False
@@ -391,8 +399,12 @@ class AppInfo:
 
 
 APP_DESC_MAGIC = 0xABCD5432
-APP_OFFSET = 0x10000          # factory app partition on both boards
+APP_OFFSET = 0x10000          # factory app partition on the robot and the controller
 PART_TABLE_OFFSET = 0x8000
+# Where a partition table can sit: 0x8000 on the robot and controller, 0x10000 on the Clockstar (its bootloader is
+# bigger, so its app starts at 0x20000). Images and chips are read for the table rather than assumed.
+PART_TABLE_OFFSETS = (0x8000, 0x10000)
+IMAGE_HEAD = 0x30000          # enough of a full image to hold any of those tables and the app's header
 PART_TABLE_MAGIC = b"\xAA\x50"
 
 
@@ -407,8 +419,28 @@ def read_app_info(data: bytes, image_offset: int) -> Optional[AppInfo]:
     return AppInfo(project=txt(48, 32), version=txt(16, 32), time=txt(80, 16), date=txt(96, 16), idf=txt(112, 32))
 
 
+def find_table(data: bytes, base: int = 0) -> Optional[int]:
+    """The flash address of the partition table in data (which starts at flash address base), or None."""
+    for off in PART_TABLE_OFFSETS:
+        rel = off - base
+        if 0 <= rel and data[rel:rel + 2] == PART_TABLE_MAGIC:
+            return off
+    return None
+
+
+def app_offset(data: bytes, table_off: int, base: int = 0) -> Optional[int]:
+    """The first app partition (factory or ota_0) listed in the table at table_off."""
+    rel = table_off - base
+    for p in parse_partitions(data[rel:rel + 0xC00]):
+        if p.type == 0:
+            return p.offset
+    return None
+
+
 def kind_from_project(project: str) -> Optional[str]:
     p = project.lower()
+    if "clockstar" in p:
+        return Kind.CLOCK
     if "butterbotctrl" in p or "controller" in p:
         return Kind.CTRL
     if "butterbot" in p:
@@ -462,7 +494,7 @@ def classify_full_image(path: Path) -> FlashPlan:
     if size < 64 * 1024:
         raise ImageError(f"{path.name} is only {size} bytes - that's not a firmware image")
     with open(path, "rb") as f:
-        head = f.read(APP_OFFSET + 0x200)
+        head = f.read(IMAGE_HEAD + 0x200)
     if head[:1] != b"\xE9":
         raise ImageError(f"{path.name} doesn't start with an ESP image header (0xE9). "
                          "Pick a merged full-flash .bin (like the GitHub releases) or a build folder.")
@@ -473,12 +505,16 @@ def classify_full_image(path: Path) -> FlashPlan:
                          "Use 'idf.py build folder' and pick the build/ folder instead."
                          + ("  (This looks like a backup of an already-broken board - don't restore it.)"
                             if source_of(path) == "BACKUP" else ""))
-    if head[PART_TABLE_OFFSET:PART_TABLE_OFFSET + 2] != PART_TABLE_MAGIC:
-        raise ImageError(f"{path.name} has no partition table at 0x8000, so it isn't a complete flash image "
-                         "(maybe a bootloader or data partition on its own). Writing it at 0x0 would brick the board.")
-    app = read_app_info(head, APP_OFFSET)
+    table = find_table(head)
+    if table is None:
+        raise ImageError(f"{path.name} has no partition table (at 0x8000 or 0x10000), so it isn't a complete flash "
+                         "image (maybe a bootloader or data partition on its own). Writing it at 0x0 would brick the "
+                         "board.")
+    app_at = app_offset(head, table)
+    app = read_app_info(head, app_at) if app_at is not None else None
     if app is None:
-        raise ImageError(f"{path.name} has a partition table but no valid app at 0x10000 - not bootable.")
+        raise ImageError(f"{path.name} has a partition table but no valid app "
+                         f"{f'at 0x{app_at:x}' if app_at is not None else 'listed'} - not bootable.")
 
     # Prefer the project name baked into the app; fall back to size (bot images carry ~12 MB of models).
     kind = kind_from_project(app.project) or (Kind.BOT if size > 4 * MiB else Kind.CTRL)
@@ -518,7 +554,7 @@ def plan_from_build_dir(build_dir: Path) -> FlashPlan:
     if size_txt.startswith("16"):
         kind = Kind.BOT
     elif size_txt.startswith("4"):
-        kind = Kind.CTRL
+        kind = Kind.CTRL  # or the Clockstar: the app's project name below decides
     desc = build_dir / "project_description.json"
     name = build_dir.parent.name
     if desc.exists():
@@ -527,16 +563,18 @@ def plan_from_build_dir(build_dir: Path) -> FlashPlan:
         except ValueError:
             pass
 
-    # A build must include the bootloader at 0x0 and the app at 0x10000, or the board won't boot.
+    # A build must include the bootloader at 0x0 and the app (0x10000 on the robot and controller, 0x20000 on the
+    # Clockstar: flasher_args.json says where), or the board won't boot.
     offsets = {off for off, _ in parts}
-    if 0 not in offsets or APP_OFFSET not in offsets:
-        raise ImageError("This build doesn't include both the bootloader (0x0) and the app (0x10000) - "
+    app_at = int(str((data.get("app") or {}).get("offset", hex(APP_OFFSET))), 16)
+    if 0 not in offsets or app_at not in offsets:
+        raise ImageError(f"This build doesn't include both the bootloader (0x0) and the app (0x{app_at:x}) - "
                          "run a full `idf.py build` first.")
-    app_path = dict(parts)[APP_OFFSET]
+    app_path = dict(parts)[app_at]
     with open(app_path, "rb") as f:
         app = read_app_info(f.read(0x200), 0)
-    if app and not kind:
-        kind = kind_from_project(app.project)
+    if app and (not kind or kind_from_project(app.project) == Kind.CLOCK):
+        kind = kind_from_project(app.project) or kind
     return FlashPlan(f"local build '{name}' ({len(parts)} parts)", parts, kind, extra, app=app, source="BUILD")
 
 
@@ -767,8 +805,8 @@ def _regions(plan: FlashPlan) -> list[tuple[int, bytes]]:
 
 def _image_table(regions: list[tuple[int, bytes]]) -> Optional[bytes]:
     for off, data in regions:
-        if off <= PART_TABLE_OFFSET < off + len(data):
-            rel = PART_TABLE_OFFSET - off
+        if (table := find_table(data, off)) is not None:
+            rel = table - off
             return data[rel:rel + 0xC00]
     return None
 
@@ -839,6 +877,8 @@ def smart_write(port: str, plan: FlashPlan, baud: int, flash_bytes: int, keep_pa
             if keep_pairing:
                 img_table = _image_table(regions)
                 chip_table = esp.read_flash(PART_TABLE_OFFSET, 0xC00)
+                if chip_table[:2] != PART_TABLE_MAGIC:  # the Clockstar keeps its table at 0x10000
+                    chip_table = esp.read_flash(0x10000, 0xC00)
                 keep, lost = nvs_to_keep(parse_partitions(chip_table),
                                          parse_partitions(img_table) if img_table else None)
                 for p in keep:
@@ -1143,7 +1183,7 @@ def load_config() -> dict:
     cr = cfg.get("custom_repos")
     if not isinstance(cr, dict):
         cr = {}
-    cfg["custom_repos"] = {k: [r for r in cr.get(k, []) if isinstance(r, str)] for k in ("bot", "ctrl")}
+    cfg["custom_repos"] = {k: [r for r in cr.get(k, []) if isinstance(r, str)] for k in ("bot", "ctrl", "clock")}
     return cfg
 
 

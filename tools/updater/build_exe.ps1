@@ -21,7 +21,7 @@ if ($LASTEXITCODE -ne 0) { throw "pip install failed" }
 if ($LASTEXITCODE -ne 0) { throw "gen_guide_data.py failed" }
 $before = if (Test-Path $exe) { (Get-Item $exe).LastWriteTime } else { [datetime]::MinValue }
 .\.venv\Scripts\pyinstaller --noconfirm --clean --onefile --windowed `
-    --name DimensionHopper --icon portal.ico --add-data "portal.ico;." --add-data "bot.png;." --add-data "controller.png;." `
+    --name DimensionHopper --icon portal.ico --add-data "portal.ico;." --add-data "bot.png;." --add-data "controller.png;." --add-data "clockstar.png;." --add-data "clockstar.png;." `
     --add-data "bot_guide.png;." --add-data "controller_guide.png;." --add-data "guide_data.json;." --add-data "screen_data.json;." --add-data "phonemes.txt.gz;." --add-data "CMUDICT_LICENSE;." `
     --collect-all esptool --collect-all numpy --collect-all faster_whisper --collect-all ctranslate2 --collect-all tokenizers `
     --collect-submodules anthropic --collect-submodules keyring --hidden-import keyring.backends.Windows `

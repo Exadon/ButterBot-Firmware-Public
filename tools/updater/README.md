@@ -60,6 +60,12 @@ have to be updated by hand once.
 
 - **Scan dimensions** (or **⟳ Scan** in the bar at the top) finds the robot and the controller on USB and tells
   them apart.
+- **Clockstar watch** (CircuitMess Clockstar v2): once a scan finds one, it gets a third slot next to the other two.
+  It's told apart from the controller (also 4 MB) by its USB: the watch uses the ESP32-S3's own, the controller a
+  CH340. Its *Latest GitHub release* is the stock [CircuitMess/Clockstar-v2-Firmware](https://github.com/CircuitMess/Clockstar-v2-Firmware);
+  backups, local files and build folders work as for the other boards, and *Keep pairing & settings* keeps its phone
+  pairing. Its partition table sits at 0x10000 and its app at 0x20000 (0x8000 and 0x10000 on the robot and
+  controller); Dimension Hopper reads each image's layout rather than assuming one.
 - **Pick a payload per board:**
   - *Latest GitHub release* from this fork (the default - `Exadon/...` with a green **FORK** badge) or the stock
     CircuitMess firmware (**STOCK** badge), plus any repository you add under **Repos…**. Downloads are cached.

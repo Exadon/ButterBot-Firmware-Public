@@ -3,6 +3,7 @@ Regenerates Dimension Hopper's artwork (all original, drawn procedurally):
   portal.ico / portal.png  - app icon
   bot.png                  - ButterBot slot icon, cartoon style: cube head + lens, jointed arms, tank treads
   controller.png           - Controller slot icon: the green PCB with ESP32 module, screen, toggle, joystick, buttons
+  clockstar.png            - Clockstar slot icon: a watch on its strap, side buttons, a green clock face
 
 Run:  .venv\\Scripts\\python make_art.py
 Drawn at 4x and downsampled for clean anti-aliasing.
@@ -199,10 +200,58 @@ def controller(out_size=(60, 110), name="controller.png"):
     finish_halo(img, out_size, HERE / name)
 
 
+def clockstar(out_size=(64, 96), name="clockstar.png"):
+    """Clockstar watch: dark rounded case on a black strap, two buttons on each side, a screen with a
+    portal-green clock face (big time, a ring of ticks)."""
+    img, d = canvas(48, 72)
+    STRAP, STRAP_EDGE = (28, 30, 34), (60, 64, 70)
+    CASE, CASE_EDGE = (46, 50, 56), (110, 116, 124)
+    ow = int(1.0 * SS)
+
+    # strap, top and bottom, with a few holes in the lower half
+    d.rounded_rectangle(S(14, 0, 34, 20), radius=3 * SS, fill=STRAP, outline=STRAP_EDGE, width=ow)
+    d.rounded_rectangle(S(14, 52, 34, 72), radius=3 * SS, fill=STRAP, outline=STRAP_EDGE, width=ow)
+    for y in (58, 63, 68):
+        d.ellipse(S(22.8, y - 1.2, 25.2, y + 1.2), fill=(10, 10, 12))
+
+    # side buttons, then the case
+    for x in (4.5, 41):
+        for y in (27, 41):
+            d.rounded_rectangle(S(x, y, x + 2.5, y + 5), radius=1 * SS, fill=(150, 156, 164))
+    d.rounded_rectangle(S(6, 14, 42, 58), radius=8 * SS, fill=CASE, outline=CASE_EDGE, width=int(1.4 * SS))
+
+    # screen: black glass, a ring of green ticks, the time in big blocky digits, a small date bar
+    d.rounded_rectangle(S(10, 18, 38, 54), radius=5 * SS, fill=(6, 10, 8))
+    import math
+    for i in range(12):
+        a = i / 12 * 2 * math.pi
+        cx, cy = 24 + math.sin(a) * 11.5, 36 - math.cos(a) * 14
+        r = 0.9 if i % 3 else 1.4
+        d.ellipse(S(cx - r, cy - r, cx + r, cy + r), fill=GREEN if i % 3 == 0 else TEAL)
+    # "12:34" as simple seven-segment-ish blocks
+    def digit(x, y, segs):
+        w, h, t = 3.6, 6.4, 0.9
+        pts = {"a": (x, y, x + w, y + t), "g": (x, y + h / 2 - t / 2, x + w, y + h / 2 + t / 2), "d": (x, y + h - t, x + w, y + h),
+               "f": (x, y, x + t, y + h / 2), "b": (x + w - t, y, x + w, y + h / 2),
+               "e": (x, y + h / 2, x + t, y + h), "c": (x + w - t, y + h / 2, x + w, y + h)}
+        for s in segs:
+            d.rectangle(S(*pts[s]), fill=LIME)
+    y0 = 32.5
+    digit(14.2, y0, "bc")
+    digit(18.6, y0, "abged")
+    d.rectangle(S(23.5, y0 + 1.6, 24.5, y0 + 2.6), fill=LIME)
+    d.rectangle(S(23.5, y0 + 4, 24.5, y0 + 5), fill=LIME)
+    digit(25.6, y0, "abgcd")
+    digit(30, y0, "fgbc")
+    d.rounded_rectangle(S(18, 42, 30, 44), radius=1 * SS, fill=(30, 90, 50))
+    finish_halo(img, out_size, HERE / name)
+
+
 if __name__ == "__main__":
     portal()
     bot()
     controller()
+    clockstar()
     # larger renders for the Guide tab diagrams
     bot((196, 224), "bot_guide.png")
     controller((150, 276), "controller_guide.png")

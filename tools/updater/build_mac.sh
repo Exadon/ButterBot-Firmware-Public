@@ -34,7 +34,7 @@ trap 'rm -rf "$WORK"' EXIT
 # into the .icns a Mac app needs (PyInstaller does that with Pillow).
 "$VENV/bin/pyinstaller" --noconfirm --clean --onedir --windowed --distpath "$WORK/dist" --workpath "$WORK/build" \
     --name DimensionHopper --icon portal.png --osx-bundle-identifier io.github.exadon.dimensionhopper \
-    --add-data "portal.png:." --add-data "bot.png:." --add-data "controller.png:." \
+    --add-data "portal.png:." --add-data "bot.png:." --add-data "controller.png:." --add-data "clockstar.png:." \
     --add-data "bot_guide.png:." --add-data "controller_guide.png:." --add-data "guide_data.json:." \
     --add-data "screen_data.json:." --add-data "phonemes.txt.gz:." --add-data "CMUDICT_LICENSE:." \
     --collect-all esptool --collect-all numpy --collect-all faster_whisper --collect-all ctranslate2 \
