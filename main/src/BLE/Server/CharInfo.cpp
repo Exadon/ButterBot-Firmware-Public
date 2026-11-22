@@ -14,22 +14,25 @@ esp_err_t BLE::Server::CharInfo::sendResp(uint16_t conn_id, uint32_t trans, esp_
 }
 
 void BLE::Server::CharInfo::sendNotif(const uint8_t* data, size_t len){
-	// Snapshot the routing target under the service's lock — `subscribedPeer` is mutated on
-	// the BLE/BTC task while sendNotif typically runs on an app thread.
-	esp_bd_addr_t peer;
-	if(!service->getSubscribedPeer(peer)) return;
+	// Snapshot the routing targets under the service's lock - the subscriber list is changed on
+	// the BLE/BTC task while sendNotif typically runs on an app thread. Every subscribed peer
+	// (the controller and the watch remote) gets the notification.
+	std::array<std::array<uint8_t, 6>, Service::MaxSubscribers> peers;
+	const size_t count = service->getSubscribedPeers(peers);
 
-	// Atomic lookup of conn_id + MTU for that peer under the Server's lock to avoid a TOCTOU
-	// with onDisconnect erasing the entry between two separate lookups.
-	uint16_t conn_id = 0;
-	uint16_t mtu = 23;
-	if(!server->connInfoForAddr(peer, conn_id, mtu)) return;
+	for(size_t p = 0; p < count; p++){
+		// Atomic lookup of conn_id + MTU for that peer under the Server's lock to avoid a TOCTOU
+		// with onDisconnect erasing the entry between two separate lookups.
+		uint16_t conn_id = 0;
+		uint16_t mtu = 23;
+		if(!server->connInfoForAddr(peers[p].data(), conn_id, mtu)) continue;
 
-	const size_t chunkMax = (size_t) mtu - 4;
-	size_t offset = 0;
-	while(offset < len){
-		const size_t chunk = std::min(len - offset, chunkMax);
-		esp_ble_gatts_send_indicate(server->iface.hndl, conn_id, hndl, chunk, const_cast<uint8_t*>(data) + offset, false);
-		offset += chunk;
+		const size_t chunkMax = (size_t) mtu - 4;
+		size_t offset = 0;
+		while(offset < len){
+			const size_t chunk = std::min(len - offset, chunkMax);
+			esp_ble_gatts_send_indicate(server->iface.hndl, conn_id, hndl, chunk, const_cast<uint8_t*>(data) + offset, false);
+			offset += chunk;
+		}
 	}
 }

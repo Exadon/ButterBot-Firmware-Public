@@ -20,15 +20,22 @@ void BLE::Server::Service::setPeerNeverPairs(){
 	peerNeverPairs = true;
 }
 
+int BLE::Server::Service::findSubscriber(const esp_bd_addr_t peer) const{
+	for(size_t i = 0; i < subscriberCount; i++){
+		if(memcmp(subscribers[i].data(), peer, 6) == 0) return (int) i;
+	}
+	return -1;
+}
+
 void BLE::Server::Service::onPeerSubscribed(const esp_bd_addr_t peer){
 	{
 		std::lock_guard lock(peerMut);
-		if(peerClaimed && memcmp(subscribedPeer, peer, 6) != 0){
-			CMF_LOG(BLE_Server_Service, LogLevel::Warning, "second peer attempted to claim service already claimed by another peer; ignoring");
+		if(findSubscriber(peer) >= 0) return; // already subscribed (another char of the service)
+		if(subscriberCount >= MaxSubscribers){
+			CMF_LOG(BLE_Server_Service, LogLevel::Warning, "too many peers subscribed to the service; ignoring another");
 			return;
 		}
-		memcpy(subscribedPeer, peer, 6);
-		peerClaimed = true;
+		memcpy(subscribers[subscriberCount++].data(), peer, 6);
 	}
 
 	if(server != nullptr && peerNeverPairs){
@@ -38,23 +45,18 @@ void BLE::Server::Service::onPeerSubscribed(const esp_bd_addr_t peer){
 
 void BLE::Server::Service::onPeerUnsubscribed(const esp_bd_addr_t peer){
 	std::lock_guard lock(peerMut);
-	if(!peerClaimed) return;
-	if(memcmp(subscribedPeer, peer, 6) != 0) return;
-
-	// Released only when no char in the service is still subscribed; otherwise the
-	// peer is unsubscribing from just one of its chars and still owns the service.
-	for(const auto& chr : chars){
-		if(chr->notifyEn || chr->indicateEn) return;
-	}
-	peerClaimed = false;
+	const int i = findSubscriber(peer);
+	if(i < 0) return;
+	subscribers[i] = subscribers[--subscriberCount];
 }
 
 void BLE::Server::Service::onDisconnect(const esp_bd_addr_t peer){
 	{
 		std::lock_guard lock(peerMut);
-		if(!peerClaimed) return;
-		if(memcmp(subscribedPeer, peer, 6) != 0) return;
-		peerClaimed = false;
+		const int i = findSubscriber(peer);
+		if(i < 0) return;
+		subscribers[i] = subscribers[--subscriberCount];
+		if(subscriberCount > 0) return; // another remote still uses the service: keep its state
 	}
 
 	for(auto& chr : chars){
@@ -74,11 +76,15 @@ void BLE::Server::Service::onDisconnect(const esp_bd_addr_t peer){
 	}
 }
 
-bool BLE::Server::Service::getSubscribedPeer(esp_bd_addr_t out) const{
+size_t BLE::Server::Service::getSubscribedPeers(std::array<std::array<uint8_t, 6>, MaxSubscribers>& out) const{
 	std::lock_guard lock(peerMut);
-	if(!peerClaimed) return false;
-	memcpy(out, subscribedPeer, 6);
-	return true;
+	for(size_t i = 0; i < subscriberCount; i++) out[i] = subscribers[i];
+	return subscriberCount;
+}
+
+bool BLE::Server::Service::hasSubscribers() const{
+	std::lock_guard lock(peerMut);
+	return subscriberCount > 0;
 }
 
 BLE::Server::Service::SubHandle BLE::Server::Service::addOnDisconnectCb(DisconnectCB cb){

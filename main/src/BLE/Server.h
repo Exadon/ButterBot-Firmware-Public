@@ -7,6 +7,7 @@
 #include <cstring>
 #include <mutex>
 #include <vector>
+#include <array>
 #include <memory>
 #include <functional>
 #include <queue>

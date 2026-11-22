@@ -39,6 +39,13 @@ RCState::RCState(BBStateMachine* sm) : State(sm){
 	sm->bindState(com->OnDriveData, this, &RCState::onDriveData);
 	sm->bindState(com->OnConnStatus, this, &RCState::onBTDisconnect);
 
+	// A remote without a hotspot (the ButterBot app on a Clockstar watch) asks for RC with an empty network name:
+	// drive only - no WiFi, no camera feed. The controller always sends its own hotspot's name.
+	if(!ServiceLocator::ControllerStateInstance || ServiceLocator::ControllerStateInstance->getSSID()[0] == '\0'){
+		CMF_LOG(RCState, Info, "RC without a camera feed (drive only)");
+		return;
+	}
+
 	MemMark::mark("rc: start");
 	wifi = newObject<WiFi>(sm);
 	MemMark::mark("rc: wifi");
@@ -68,9 +75,10 @@ RCState::~RCState(){
 		baseBoard->setMotors(0, 0);
 	}
 
-	delete *feed;
-	delete *wifiSta;
-	delete *wifi;
+	// Null in drive-only RC (no hotspot to join)
+	if(feed != nullptr) delete *feed;
+	if(wifiSta != nullptr) delete *wifiSta;
+	if(wifi != nullptr) delete *wifi;
 }
 
 int64_t RCState::getDynamicTickInterval() const noexcept{

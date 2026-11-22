@@ -87,9 +87,12 @@ void BLE::Server::Char::onWrite(const esp_ble_gatts_cb_param_t::gatts_write_evt_
 			}
 		}else if(val == 0x0000){
 			CMF_LOG(BLE_Server_Char, LogLevel::Info,"Client disabling NOTIFY/INDICATE");
-			notifyEn = false;
-			indicateEn = false;
 			if(parent) parent->onPeerUnsubscribed(param->bda);
+			// Other remotes may still be subscribed: keep notifying them
+			if(!parent || !parent->hasSubscribers()){
+				notifyEn = false;
+				indicateEn = false;
+			}
 		}else{
 			CMF_LOG(BLE_Server_Char, LogLevel::Warning,"Unknown CCCD value 0x%04x", val);
 		}
