@@ -1,7 +1,8 @@
 """
 Dimension Hopper - the problem report: one text file to attach to a GitHub issue or a forum post.
 
-What goes in: app and system versions, the USB ports seen, each board's status line, the robot's WiFi state and its
+What goes in: app and system versions, the USB ports seen, each board's status line (the watch too, with its recent
+warnings and errors - never its notifications), the robot's WiFi state and its
 recent events (it keeps its last status lines in RAM since it switched on - "events" on its console, so problems that
 happened while it was unplugged are there too), the AI brain's settings and the timings / errors of its last turns,
 and this session's Dimension Hopper log.
@@ -78,6 +79,35 @@ def _controller(port: str, out: list[str], held: bool):
                "No answer - switched off, busy, or not running this firmware.")
 
 
+def _watch(port: str, out: list[str], held: bool):
+    out.append(f"== Watch ({os.path.basename(port)}) ==")
+    if held:
+        out.append("(its port is in use elsewhere in Dimension Hopper)")
+        return
+    try:
+        import clockstar_link as cl
+        with cl.Watch(port) as w:
+            i = w.info()
+            out.append(f"firmware: {i.fw}  theme: {i.theme or '(own look)'}  storage: {i.used // 1024} of "
+                       f"{i.total // 1024} KB used  clock: {i.clock}-hour  drift: {i.time - cl.local_epoch():+d} s")
+            st = w.stat()
+            if st:
+                out.append("status: " + " ".join(f"{k}={v}" for k, v in st.items()))
+            r = w.robot_link()
+            if r:
+                out.append(f"robot link: {'on' if r.on else 'off'} state={r.state} robot_battery={r.battery} "
+                           f"charge={r.charge}")
+            out.append("menu: " + ", ".join(("" if a.shown else "-") + a.id for a in w.apps()))
+            installed, active = w.themes()
+            out.append("themes: " + (", ".join(f"{t} ({b // 1024} KB)" for t, b in installed.items()) or "none") +
+                       f"; active: {active or '(own look)'}")
+            lines = w.log()
+            out.append(f"recent warnings and errors ({len(lines)}, oldest first; uptime in ms):")
+            out += ["  " + l for l in lines] or ["  (none)"]
+    except Exception as e:  # noqa: BLE001 - the report must never fail over one section
+        out.append(f"No answer ({type(e).__name__}: {e}) - asleep, busy, or not running the ButterBot watch firmware.")
+
+
 def _brain(cfg: dict, out: list[str]):
     out.append("== AI brain ==")
     out.append("settings: " + " ".join(f"{k}={cfg[k]}" for k in SETTINGS_SAFE if k in cfg))
@@ -103,7 +133,7 @@ def _brain(cfg: dict, out: list[str]):
 
 
 def build(version: str, bot_port: str, ctrl_port: str, cfg: dict, held: set[str], app_log: str,
-          progress: Callable[[str], None] = lambda s: None) -> str:
+          progress: Callable[[str], None] = lambda s: None, watch_port: str = "") -> str:
     out = ["ButterBot problem report", "========================",
            f"made: {time.strftime('%Y-%m-%d %H:%M')}",
            f"Dimension Hopper {version} ({'app' if getattr(sys, 'frozen', False) else 'from source'}) on "
@@ -124,6 +154,10 @@ def build(version: str, bot_port: str, ctrl_port: str, cfg: dict, held: set[str]
     else:
         out.append("== Controller ==\nnot selected / not plugged in")
     out.append("")
+    if watch_port:
+        progress("Asking the watch…")
+        _watch(watch_port, out, watch_port in held)
+        out.append("")
     progress("Collecting the AI settings…")
     _brain(cfg, out)
     out += ["", "== Dimension Hopper log (this session) ==", app_log.strip() or "(empty)"]

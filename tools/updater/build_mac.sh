@@ -36,7 +36,7 @@ trap 'rm -rf "$WORK"' EXIT
     --name DimensionHopper --icon portal.png --osx-bundle-identifier io.github.exadon.dimensionhopper \
     --add-data "portal.png:." --add-data "bot.png:." --add-data "controller.png:." --add-data "clockstar.png:." \
     --add-data "bot_guide.png:." --add-data "controller_guide.png:." --add-data "guide_data.json:." \
-    --add-data "screen_data.json:." --add-data "phonemes.txt.gz:." --add-data "CMUDICT_LICENSE:." \
+    --add-data "screen_data.json:." --add-data "phonemes.txt.gz:." --add-data "CMUDICT_LICENSE:." --add-data "themes:themes" \
     --collect-all esptool --collect-all numpy --collect-all faster_whisper --collect-all ctranslate2 \
     --collect-all tokenizers --collect-submodules anthropic --collect-submodules keyring \
     --hidden-import keyring.backends.macOS \

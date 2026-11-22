@@ -172,13 +172,25 @@ own icons and animations) showing what the robot sends, the controller's whole a
 - RC mode with the camera still needs the hardware controller (it makes the WiFi hotspot the camera streams to); here
   the stick drives the robot directly.
 
+### Watch
+Shows once a scan has found a Clockstar watch. It needs watch firmware with the ButterBot app, which isn't
+published yet; on the stock watch firmware the tab says so and the rest of Dimension Hopper works as before.
+
+- **Setup:** set the watch's clock to this PC's time (by hand, or whenever a scan finds it), 12 or 24 hours; link it
+  to ButterBot (the robot's battery on the watch face, its answers and alarms as notifications); show, hide and
+  reorder the watch's menu apps; put a theme on it (four original ones ship with Dimension Hopper) or import one
+  made of your own PNGs.
+- **Everyday:** steps (today, the last 7 days, the daily goal, how strictly it counts, the activity nudge, save as
+  CSV), the watch's four alarms with any mix of weekdays (and **Hear the alarm**), and its battery over the last
+  3 days with charging shaded.
+
 ### Console
 The board's raw log with filters, a table of what the robot heard and matched, a box to send console commands, and
 **Save log…**.
 
 ### Problem report
 **Problem report…** (top right, next to About) saves one text file to attach to a bug report or a forum post: the
-versions of Dimension Hopper, Windows/macOS and both boards, the USB ports, each board's status, the robot's WiFi state
+versions of Dimension Hopper, Windows/macOS and the boards (the watch too, with its warnings - never its notifications), the USB ports, each board's status, the robot's WiFi state
 and its **recent events**, the AI settings and installed Ollama models, the timings and errors of the last AI turns,
 and this session's log. It opens the file so you can read it first, then offers to start a GitHub bug report.
 

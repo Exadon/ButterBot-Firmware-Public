@@ -30,13 +30,14 @@ from controller_tab import ControllerTab
 from ai_tab import AITab
 from personalize_tab import PersonalizeTab
 from routines_tab import RoutinesTab
+from watch_tab import WatchTab
 from hop_dialog import HopDialog
 import tooltip
 from hopper_core import Kind
 import backup as backup_mod
 
 APP_TITLE = "Dimension Hopper"
-VERSION = "1.11.0"
+VERSION = "1.12.0"
 ROBOT_REPO = "Exadon/ButterBot-Firmware-Public"
 CTRL_REPO = "Exadon/ButterBotCtrl-Firmware-Public"
 
@@ -601,6 +602,8 @@ class App:
         nb.add(self.guide_tab, text="  Guide  ")
         self.controller_tab = ControllerTab(nb, pal, self)
         nb.add(self.controller_tab, text="  Controller  ")
+        self.watch_tab = WatchTab(nb, pal, self)   # the Clockstar: shown once a scan has found one
+        nb.add(self.watch_tab, text="  Watch  ")
         self.personalize_tab = PersonalizeTab(nb, pal, self)
         nb.add(self.personalize_tab, text="  Personalize  ")
         self.routines_tab = RoutinesTab(nb, pal, self)
@@ -612,6 +615,8 @@ class App:
         self.console_tab = ConsoleTab(nb, pal, self)
         nb.add(self.console_tab, text="  Console  ")
         self._tab_order_init()
+        if not self.cfg.get("clockstar_seen"):
+            nb.hide(self.watch_tab)
         nb.bind("<<NotebookTabChanged>>", lambda e: self._header_for_tab(), add="+")
         # Keep the window the size it opened at: the header shrinks on most tabs, and the window shouldn't jump
         root.after(400, self._settle_window_size)
@@ -857,6 +862,7 @@ class App:
         self._reporting = True
         self.log("Making a problem report…", "hi")
         bot, ctrl = self.board_vars[Kind.BOT].get(), self.board_vars[Kind.CTRL].get()
+        watch = self.watch_tab._port() if self.cfg.get("clockstar_seen") and not self.watch_tab.working else ""
         held = self.held_ports()
         app_log = self.log_txt.get("1.0", "end")
         cfg = dict(self.cfg)
@@ -864,7 +870,7 @@ class App:
         def work():
             import report
             try:
-                text = report.build(VERSION, bot, ctrl, cfg, held, app_log, lambda s: self.tlog(s))
+                text = report.build(VERSION, bot, ctrl, cfg, held, app_log, lambda s: self.tlog(s), watch)
             except Exception as e:  # noqa: BLE001 - shown to the user
                 text, err = "", e
             else:
@@ -1191,6 +1197,8 @@ class App:
     def show_clock_slot(self):
         """Shows the Clockstar's slot under the robot's and the controller's (and remembers that there is one)."""
         slot = self.slots[Kind.CLOCK]
+        if hasattr(self, "watch_tab"):
+            self.nb.add(self.watch_tab)   # un-hides the Watch tab where it was
         if slot.winfo_manager():
             return
         # A third column next to the others: the tab stays as tall as it was
@@ -1212,13 +1220,13 @@ class App:
             self.board_vars[kind].set(device)
         self.slots[kind].select_port(device)
         for tab in (self.ai_tab, self.diag_tab, self.personalize_tab, self.routines_tab, self.console_tab,
-                    self.controller_tab):
+                    self.controller_tab, self.watch_tab):
             tab.use_port(kind, device)
 
     def _refresh_all_ports(self) -> list[core.PortInfo]:
         ports = self.refresh_ports()
         for tab in (self.ai_tab, self.diag_tab, self.personalize_tab, self.routines_tab, self.console_tab,
-                    self.controller_tab):
+                    self.controller_tab, self.watch_tab):
             tab.refresh_ports()
         for kind, device in self.known_ports.items():
             if any(p.device == device for p in ports):
