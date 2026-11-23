@@ -125,14 +125,14 @@ def short_path(path) -> str:
 PRESET_REPOS = {
     "bot": ["Exadon/ButterBot-Firmware-Public", "CircuitMess/ButterBot-Firmware-Public"],
     "ctrl": ["Exadon/ButterBotCtrl-Firmware-Public", "CircuitMess/ButterBotCtrl-Firmware-Public"],
-    "clock": ["CircuitMess/Clockstar-v2-Firmware"],
+    "clock": ["Exadon/Clockstar-v2-Firmware", "CircuitMess/Clockstar-v2-Firmware"],
 }
 STOCK_OWNER = "CircuitMess"
 
 DEFAULT_CONFIG = {
     "bot_repo": "Exadon/ButterBot-Firmware-Public",       # the fork by default (STOCK is one click away)
     "ctrl_repo": "Exadon/ButterBotCtrl-Firmware-Public",
-    "clock_repo": "CircuitMess/Clockstar-v2-Firmware",
+    "clock_repo": "Exadon/Clockstar-v2-Firmware",         # the fork with the ButterBot app (Watch tab)
     "custom_repos": {"bot": [], "ctrl": [], "clock": []},
     "backup_first": True,
     "baud": 921600,
@@ -1180,6 +1180,10 @@ def load_config() -> dict:
         cfg.update(json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
     except (OSError, ValueError):
         pass
+    # 1.11-1.12.0 defaulted the watch to the stock firmware (the fork wasn't published yet): move it to the fork once
+    if not cfg.get("clock_repo_fork") and cfg.get("clock_repo") == "CircuitMess/Clockstar-v2-Firmware":
+        cfg["clock_repo"] = DEFAULT_CONFIG["clock_repo"]
+    cfg["clock_repo_fork"] = True
     cr = cfg.get("custom_repos")
     if not isinstance(cr, dict):
         cr = {}

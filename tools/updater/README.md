@@ -62,7 +62,9 @@ have to be updated by hand once.
   them apart.
 - **Clockstar watch** (CircuitMess Clockstar v2): once a scan finds one, it gets a third slot next to the other two.
   It's told apart from the controller (also 4 MB) by its USB: the watch uses the ESP32-S3's own, the controller a
-  CH340. Its *Latest GitHub release* is the stock [CircuitMess/Clockstar-v2-Firmware](https://github.com/CircuitMess/Clockstar-v2-Firmware);
+  CH340. Its *Latest GitHub release* is this fork's watch firmware, [Exadon/Clockstar-v2-Firmware](https://github.com/Exadon/Clockstar-v2-Firmware)
+  (the ButterBot app and everything the Watch tab sets up), or the stock CircuitMess one (**STOCK** badge). Flashing a
+  full image replaces the watch's storage, so put your themes back from the Watch tab afterwards;
   backups, local files and build folders work as for the other boards, and *Keep pairing & settings* keeps its phone
   pairing. Its partition table sits at 0x10000 and its app at 0x20000 (0x8000 and 0x10000 on the robot and
   controller); Dimension Hopper reads each image's layout rather than assuming one.
@@ -173,8 +175,9 @@ own icons and animations) showing what the robot sends, the controller's whole a
   the stick drives the robot directly.
 
 ### Watch
-Shows once a scan has found a Clockstar watch. It needs watch firmware with the ButterBot app, which isn't
-published yet; on the stock watch firmware the tab says so and the rest of Dimension Hopper works as before.
+Shows once a scan has found a Clockstar watch. It needs this fork's watch firmware
+([Exadon/Clockstar-v2-Firmware](https://github.com/Exadon/Clockstar-v2-Firmware), the default on the Flash tab); on
+the stock watch firmware the tab says so and the rest of Dimension Hopper works as before.
 
 - **Setup:** set the watch's clock to this PC's time (by hand, or whenever a scan finds it), 12 or 24 hours; link it
   to ButterBot (the robot's battery on the watch face, its answers and alarms as notifications); show, hide and
