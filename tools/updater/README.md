@@ -211,8 +211,9 @@ Four steps, each with a lamp (NOT SET UP / TO DO / WORKING… / READY / PROBLEM)
 
 1. **Robot WiFi** - **Scan** lists the networks the robot can see (2.4 GHz only), pick yours, type the password,
    **Send to robot**, then **Test robot WiFi**. Tick *remember on this PC* to keep the password in Windows Credential
-   Manager (the Keychain on a Mac). This PC's address is given to the robot so it finds the brain even when the robot and the PC are on
-   different sub-networks (common with mesh WiFi); it stays hidden on screen unless you tick *show addresses*.
+   Manager (the Keychain on a Mac). This PC's address is given to the robot so it finds the brain even when the robot
+   and the PC are on different sub-networks (common with mesh WiFi); it stays hidden on screen unless you tick
+   *show addresses*.
 2. **Hearing** - loads [Whisper](https://github.com/SYSTRAN/faster-whisper) on this PC (base.en, about 140 MB,
    downloaded once from Hugging Face - **Source…** can point it at a mirror or a folder instead).
 3. **Thinking** - [Ollama](https://ollama.com), free and local. Install it, run `ollama pull llama3.1:8b` (or
