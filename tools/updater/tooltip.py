@@ -111,7 +111,7 @@ TIPS = {
     "How it works / setup guide": "Step-by-step setup for AI conversations, and how it all fits together.",
     "Scan": "Ask the robot which WiFi networks it can see (2.4 GHz only - that's all it can use).",
     "Send to robot": "Save the WiFi name and password on the robot (over USB).",
-    "Test robot WiFi": "Have the robot join the WiFi now and look for the brain on this PC. Takes up to ~20 s.",
+    "Test robot WiFi": "Have the robot join the WiFi now and look for the brain on this PC. Usually 5-10 s, up to 45 s.",
     "Check robot": "Show which WiFi the robot has saved, its AI setting, and what went wrong last time (if anything).",
     "Load": "Load the speech-to-text model on this PC (downloads it the first time).",
     "Source…": "Choose where the speech model comes from: Hugging Face, a mirror, or a folder on this PC.",

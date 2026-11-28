@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cerrno>
+#include <fcntl.h>
 #include <lwip/sockets.h>
 #include <lwip/inet.h>
 #include <esp_app_desc.h>
@@ -26,6 +28,12 @@ namespace {
 		setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 	}
 
+	/**
+	 * TCP connect that really gives up after timeoutMs. lwIP's blocking connect() ignores SO_SNDTIMEO and waits for
+	 * the SYN retries to run out (~20 s) when nothing answers - e.g. the brain isn't running and the PC's firewall
+	 * silently drops the attempt. That made "wifi test" report too late for Dimension Hopper, and stalled
+	 * conversations whenever the brain was off. So: non-blocking connect + select().
+	 */
 	int connectTo(uint32_t ip, uint16_t port, uint32_t timeoutMs){
 		const int s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 		if(s < 0) return -1;
@@ -34,10 +42,25 @@ namespace {
 		addr.sin_family = AF_INET;
 		addr.sin_port = htons(port);
 		addr.sin_addr.s_addr = ip;
+		const int flags = fcntl(s, F_GETFL, 0);
+		fcntl(s, F_SETFL, flags | O_NONBLOCK);
 		if(connect(s, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0){
-			close(s);
-			return -1;
+			if(errno != EINPROGRESS){
+				close(s);
+				return -1;
+			}
+			fd_set w;
+			FD_ZERO(&w);
+			FD_SET(s, &w);
+			timeval tv{ .tv_sec = (time_t) (timeoutMs / 1000), .tv_usec = (suseconds_t) ((timeoutMs % 1000) * 1000) };
+			int err = 0;
+			socklen_t len = sizeof(err);
+			if(select(s + 1, nullptr, &w, nullptr, &tv) <= 0 || getsockopt(s, SOL_SOCKET, SO_ERROR, &err, &len) != 0 || err != 0){
+				close(s);
+				return -1;
+			}
 		}
+		fcntl(s, F_SETFL, flags); // back to blocking for the send/recv that follow (they honour the timeouts above)
 		return s;
 	}
 

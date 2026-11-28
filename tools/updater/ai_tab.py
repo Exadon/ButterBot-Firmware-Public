@@ -141,11 +141,37 @@ class AITab(tk.Frame):
         if self.cfg.get("ai_autostart") and self.cfg.get("ai_wifi_ok"):
             self.after(800, self.start_brain)
 
-    def _robot_cmd_locked(self, port, cmd, tag, timeout_s=4.0):
+    # "wifi test" = join (up to 10 s) + look for the brain on this PC. Older robot firmware could spend ~20 s on the
+    # brain search when the brain wasn't running, so the result came after the old 20 s wait and showed as "No answer"
+    WIFI_TEST_WAIT_S = 45
+
+    def _robot_cmd_locked(self, port, cmd, tag, timeout_s=4.0, need=None):
         """One robot command at a time from this tab. At startup the brain's "ai on" and the WiFi check used to open
         the port at the same moment; the loser failed silently and the robot stayed in its brain-offline pause."""
         with self._robot_lock:
-            return core.console_command(port, cmd, tag, timeout_s=timeout_s)
+            return core.console_command(port, cmd, tag, timeout_s=timeout_s, need=need)
+
+    def _wifi_test_locked(self, port):
+        """Runs "wifi test" and waits for its result line (not the robot's progress lines). Worker thread."""
+        return self._robot_cmd_locked(port, "wifi test", "BBWIFI", timeout_s=self.WIFI_TEST_WAIT_S, need="result")
+
+    def _start_wifi_wait(self, what: str):
+        """Counts the seconds on step 1's status while the robot works, so a slow test doesn't look stuck."""
+        self._wifi_wait_n = getattr(self, "_wifi_wait_n", 0) + 1
+        me, t0 = self._wifi_wait_n, time.time()
+
+        def tick():
+            if me != self._wifi_wait_n:
+                return
+            s = int(time.time() - t0)
+            hint = "joining your WiFi" if s < 10 else "looking for the brain on this PC"
+            self._say(self.wifi_status, self.wifi_lamp, f"{what}: {hint}… {s} s (can take up to "
+                      f"{self.WIFI_TEST_WAIT_S} s)", "busy")
+            self.after(1000, tick)
+        tick()
+
+    def _stop_wifi_wait(self):
+        self._wifi_wait_n = getattr(self, "_wifi_wait_n", 0) + 1
 
     def _quiet_robot_check(self):
         """App just opened. If the robot is plugged in: read its settings and, if it has WiFi saved, test it (join the
@@ -171,12 +197,12 @@ class AITab(tk.Frame):
                 else:
                     if ssid and not self.ssid_var.get().strip():
                         self.ssid_var.set(ssid)
-                    self._say(self.wifi_status, self.wifi_lamp, f"Checking the robot's WiFi ({ssid})…", "busy")
+                    self._start_wifi_wait(f"Checking the robot's WiFi ({ssid})")
             self.app.ui(show_settings)
             if configured:
                 self._push_brain_address(port)
-                t = self._robot_cmd_locked(port, "wifi test", "BBWIFI", timeout_s=25)
-                self._deliver(t, port, self._test_result)
+                t = self._wifi_test_locked(port)
+                self._deliver_test(t, port)
         threading.Thread(target=work, daemon=True).start()
 
     # --- WiFi gate ------------------------------------------------------------------------------------
@@ -334,13 +360,13 @@ class AITab(tk.Frame):
             return None
         return port
 
-    def _robot_cmd(self, cmd: str, tag: str, timeout: float, done, status=None):
+    def _robot_cmd(self, cmd: str, tag: str, timeout: float, done, status=None, need=None):
         port = self._robot_port()
         if not port:
             return
 
         def work():
-            r = self._robot_cmd_locked(port, cmd, tag, timeout_s=timeout)
+            r = self._robot_cmd_locked(port, cmd, tag, timeout_s=timeout, need=need)
             self._deliver(r, port, done, status)
         threading.Thread(target=work, daemon=True).start()
 
@@ -428,24 +454,40 @@ class AITab(tk.Frame):
             listing = ",  ".join(f"{n} ({bars(r_)}{', open' if o else ''})" for n, r_, o in nets[:8])
             self._say(self.wifi_status, self.wifi_lamp, f"Found {len(nets)}: {listing}. Pick yours in WiFi name, "
                       "type the password and hit Send to robot.", "warn")
-        self._robot_cmd("wifi scan", "BBWIFI", 15, done)
+        self._robot_cmd("wifi scan", "BBWIFI", 15, done, need="result")
 
     def test_wifi(self):
-        self._say(self.wifi_status, self.wifi_lamp, "The robot is joining the WiFi (up to 15 s)…", "busy")
-
         port = self._robot_port()
         if not port:
             return
+        self._start_wifi_wait("Testing")
 
         def work():
             self._push_brain_address(port)
-            r = self._robot_cmd_locked(port, "wifi test", "BBWIFI", timeout_s=20)
-            self._deliver(r, port, self._test_result)
+            r = self._wifi_test_locked(port)
+            self._deliver_test(r, port)
         threading.Thread(target=work, daemon=True).start()
+
+    def _deliver_test(self, r, port: str):
+        """Worker thread: stops the seconds counter, then shows the WiFi test's result (or why there isn't one)."""
+        gone = r is None and not core.port_exists(port)
+
+        def show(res):
+            if gone:
+                self._say(self.wifi_status, self.wifi_lamp, f"{port} went away during the test - the robot switched off "
+                          "or restarted. Switch it on and hit Test robot WiFi again.", "bad")
+            else:
+                self._test_result(res)
+        self.app.ui(self._stop_wifi_wait)
+        self._deliver(r, port, show)
 
     def _test_result(self, r):
         if r is None:
-            self._say(self.wifi_status, self.wifi_lamp, "No answer from the robot.", "bad")
+            # The command went through, but no result line came back in time
+            self._say(self.wifi_status, self.wifi_lamp,
+                      f"The robot didn't report a result within {self.WIFI_TEST_WAIT_S} s. Check it's switched on "
+                      "and sitting idle (not driving or listening) and that it has this release's firmware (Flash "
+                      "tab), then hit Test robot WiFi again.", "bad")
             return
         res = r.get("result")
         if res == "connected":

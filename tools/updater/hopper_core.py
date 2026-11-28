@@ -1091,8 +1091,11 @@ def port_problem(r: Optional[dict], port: str) -> Optional[str]:
     return None
 
 
-def console_command(port: str, command: str, reply_tag: str, timeout_s: float = 4.0) -> Optional[dict]:
+def console_command(port: str, command: str, reply_tag: str, timeout_s: float = 4.0,
+                    need: Optional[str] = None) -> Optional[dict]:
     """Sends a console command without resetting the board and returns the fields of the [reply_tag] reply.
+    need: only accept a reply that has this field (e.g. "result"), skipping progress lines with the same tag such as
+    "[BBWIFI] event=dhcp_retry" that the robot prints while it works.
     None = no reply; PORT_BUSY / PORT_LOST (see port_problem) when the port itself was the problem. Never raises."""
     import serial
 
@@ -1118,7 +1121,9 @@ def console_command(port: str, command: str, reply_tag: str, timeout_s: float = 
                 done, _, rest = buf.rpartition(b"\n")
                 for line in done.decode("utf-8", "replace").splitlines():
                     if m := pat.search(line):
-                        return dict(kv.split("=", 1) for kv in m.group(1).split())
+                        fields = dict(kv.split("=", 1) for kv in m.group(1).split())
+                        if need is None or need in fields:
+                            return fields
                 buf = rest[-65536:]
         except serial.SerialException:
             return dict(PORT_LOST)

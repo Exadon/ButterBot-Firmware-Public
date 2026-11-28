@@ -271,6 +271,11 @@ With the robot plugged in, **Check robot** (step 1) also shows what went wrong t
 - **The robot isn't found / "port in use".** Switch the robot on (hold the button about 1 second) - its USB only works
   while it's on. Only one program can use a port at a time: disconnect the Diagnostics or Console tab, or close other
   serial tools.
+- **Test robot WiFi says the robot didn't report a result (1.12.1 said "No answer from the robot").** Check the
+  robot is switched on and sitting idle (not driving or listening), then test again. The test normally takes 5-10 s;
+  the step 1 status counts the seconds. Before 1.12.2 the app waited only 20 s, and a robot whose brain search ran
+  long (the brain not started yet, behind Windows Firewall) answered just after that, so steps 2-4 stayed locked even
+  though the WiFi worked.
 - **A flash failed part-way.** Nothing is lost - settings live separately. Press **BEAM IT** again (don't press the
   robot's button while it flashes). If the robot no longer reports itself, pick its port by hand and flash again.
 - **Answers take long.** The table's *Upload / Hear / Think* columns show where the time goes. Upload depends on

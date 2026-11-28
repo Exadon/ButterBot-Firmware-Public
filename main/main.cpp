@@ -1277,6 +1277,7 @@ private:
 				const unsigned ram = (unsigned) (heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024);
 				// The address Dimension Hopper gave us first (works across sub-networks), then a broadcast search
 				const HomeWiFi::Config saved = HomeWiFi::load();
+				const int64_t probeStart = esp_timer_get_time();
 				uint32_t bip = saved.brainIp;
 				uint16_t bport = saved.brainPort;
 				bool brain = bip != 0 && BrainLink::reachable(bip, bport, 1500);
@@ -1289,8 +1290,10 @@ private:
 					ip4_addr_t b{ .addr = bip };
 					snprintf(brainText, sizeof(brainText), "%s", ip4addr_ntoa(&b));
 				}
-				printf("[BBWIFI] result=connected ip=%s rssi=%d ram=%u ram_min=%u brain=%s\n", ipText, wifi.rssi(), ram,
-				       (unsigned) MemMark::lowestKb(), brainText);
+				// brain_ms: how long the brain search took (diagnostics; the WiFi join itself is already done)
+				printf("[BBWIFI] result=connected ip=%s rssi=%d ram=%u ram_min=%u brain=%s brain_ms=%lld\n", ipText,
+				       wifi.rssi(), ram, (unsigned) MemMark::lowestKb(), brainText,
+				       (long long) ((esp_timer_get_time() - probeStart) / 1000));
 			}
 			wifi.stop();
 			bot->wifiTesting = false;
